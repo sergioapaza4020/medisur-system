@@ -1,0 +1,37 @@
+services:
+  postgres:
+    extends:
+      file: docker-compose.yml
+      service: postgres
+  redis:
+    extends:
+      file: docker-compose.yml
+      service: redis
+  backend:
+    extends:
+      file: docker-compose.yml
+      service: backend
+    command: ["pnpm", "dev"]
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+  worker:
+    extends:
+      file: docker-compose.yml
+      service: worker
+    command: ["pnpm", "worker:dev"]
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+  frontend:
+    extends:
+      file: docker-compose.yml
+      service: frontend
+    command: ["pnpm", "dev"]
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:

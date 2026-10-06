@@ -1,0 +1,50 @@
+{
+  "name": "medisur-system",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "turbo run format",
+    "format:fix": "turbo run format:fix",
+    "check-types": "turbo run check-types",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "prepare": "husky install",
+    "precommit": "lint-staged && pnpm lint",
+    "prepush": "pnpm build && pnpm test",
+    "commit": "cz"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.6",
+    "@semantic-release/release-notes-generator": "^14.1.0",
+    "commitizen": "^4.3.1",
+    "cz-conventional-changelog": "^3.3.0",
+    "husky": "^8.0.0",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.7.4",
+    "semantic-release": "^25.0.3",
+    "turbo": "^2.9.0",
+    "typescript": "5.9.2"
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=18"
+  }
+}

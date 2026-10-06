@@ -1,0 +1,77 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**"
+      ]
+    },
+    "lint": {
+      "dependsOn": [
+        "^lint"
+      ]
+    },
+    "lint:fix": {
+      "dependsOn": [
+        "^lint:fix"
+      ],
+      "cache": false
+    },
+    "format": {
+      "dependsOn": [
+        "^format"
+      ]
+    },
+    "format:fix": {
+      "dependsOn": [
+        "^format:fix"
+      ],
+      "cache": false
+    },
+    "check-types": {
+      "dependsOn": [
+        "^check-types"
+      ]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "test": {
+      "dependsOn": [
+        "^test"
+      ],
+      "outputs": [
+        "coverage/**"
+      ],
+      "cache": false,
+      "persistent": true
+    },
+    "clean": {
+      "cache": false,
+      "persistent": true
+    },
+    "worker:dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "worker:build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*"
+      ],
+      "outputs": [
+        "dist-worker/**"
+      ]
+    }
+  }
+}

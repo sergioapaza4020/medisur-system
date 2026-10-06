@@ -1,0 +1,92 @@
+services:
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: medisur_system_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: medisur_system_db
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d medisur_system_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:6389:6389"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/api/dockerfile
+    container_name: medisur_system_backend
+    ports:
+      - "3011:3011"
+    env_file:
+      - apps/api/.env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6389
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/medisur_system_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/dockerfile
+    container_name: medisur_system_worker
+    command: ["node", "dist-worker/worker"]
+    restart: unless-stopped
+    env_file:
+      - apps/api/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/medisur_system_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6389
+      BULK_USER_IMPORT_BATCH_SIZE: ${BULK_USER_IMPORT_BATCH_SIZE:-250}
+      BULK_USER_IMPORT_BCRYPT_CONCURRENCY: ${BULK_USER_IMPORT_BCRYPT_CONCURRENCY:-4}
+      BULK_USER_IMPORT_JOB_CONCURRENCY: ${BULK_USER_IMPORT_JOB_CONCURRENCY:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/web/dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3011}
+    container_name: medisur_system_frontend
+    ports:
+      - "3010:3010"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:

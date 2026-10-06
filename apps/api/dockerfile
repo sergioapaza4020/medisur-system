@@ -1,0 +1,15 @@
+FROM node:24-alpine AS base
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+
+COPY ../../package.json ../../pnpm-lock.yaml ../../pnpm-workspace.yaml ./
+COPY ../../apps ./apps
+
+RUN pnpm install --frozen-lockfile
+
+WORKDIR /app/apps/api
+RUN pnpm build
+RUN pnpm worker:build
+
+EXPOSE 3011
+CMD ["node","dist/main"]
