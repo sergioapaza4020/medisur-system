@@ -74,7 +74,6 @@ const MenuSection: ForwardRefRenderFunction<HTMLLIElement, MenuSectionProps> = (
   };
 
   return (
-    // eslint-disable-next-line lines-around-comment
     // Menu Section
     <StyledVerticalMenuSection
       ref={ref}

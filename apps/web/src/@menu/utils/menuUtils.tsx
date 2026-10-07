@@ -33,17 +33,27 @@ export const confirmUrlInChildren = (children: ChildrenType['children'], url: st
     return children.some((child: ReactNode) => confirmUrlInChildren(child, url));
   }
 
-  if (isValidElement(children)) {
+  if (
+    isValidElement<{
+      component?: ReactElement<{ href?: string }>;
+      href?: string;
+      exactMatch?: boolean;
+      activeUrl?: string;
+      children?: ReactNode;
+    }>(children)
+  ) {
     const { component, href, exactMatch, activeUrl, children: subChildren } = children.props;
 
     if (component && component.props.href) {
       return exactMatch === true || exactMatch === undefined
         ? component.props.href === url
-        : activeUrl && url.includes(activeUrl);
+        : Boolean(activeUrl && url.includes(activeUrl));
     }
 
     if (href) {
-      return exactMatch === true || exactMatch === undefined ? href === url : activeUrl && url.includes(activeUrl);
+      return exactMatch === true || exactMatch === undefined
+        ? href === url
+        : Boolean(activeUrl && url.includes(activeUrl));
     }
 
     if (subChildren) {

@@ -50,11 +50,13 @@ const OptionMenu = (props: OptionsMenuType) => {
 
   // States
   const [open, setOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
 
   // Refs
   const anchorRef = useRef<HTMLButtonElement>(null);
 
   const handleToggle = () => {
+    setAnchorEl(anchorRef.current);
     setOpen((prevOpen) => !prevOpen);
   };
 
@@ -81,7 +83,7 @@ const OptionMenu = (props: OptionsMenuType) => {
       </IconButtonWrapper>
       <Popper
         open={open}
-        anchorEl={anchorRef.current}
+        anchorEl={anchorEl}
         placement={leftAlignMenu ? 'bottom-start' : 'bottom-end'}
         transition
         disablePortal

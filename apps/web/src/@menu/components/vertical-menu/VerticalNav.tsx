@@ -121,7 +121,6 @@ const VerticalNav = (props: VerticalNavProps) => {
 
       {/* When verticalNav is toggled on smaller screen, show/hide verticalNav backdrop */}
       {isToggledContext && breakpointReached && (
-        // eslint-disable-next-line lines-around-comment
         /* VerticalNav Backdrop */
         <StyledBackdrop
           role='button'

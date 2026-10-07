@@ -60,7 +60,6 @@ const Navigation = () => {
   };
 
   return (
-    // eslint-disable-next-line lines-around-comment
     // Sidebar Vertical Menu
     <VerticalNav customStyles={navigationCustomStyles(theme)}>
       {/* Nav Header including Logo & nav toggle icons  */}
