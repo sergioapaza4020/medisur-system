@@ -1,13 +1,21 @@
 import AppDataSource from './datasource';
+import { seedAccessControl } from './seeders/access-control.seeder';
 
 async function seed() {
   await AppDataSource.initialize();
 
   console.log('Database connected');
 
-  await AppDataSource.destroy();
+  try {
+    await AppDataSource.transaction(seedAccessControl);
+  } finally {
+    await AppDataSource.destroy();
+  }
 
   console.log('Seed completed');
 }
 
-void seed();
+void seed().catch(() => {
+  console.error('Seed failed');
+  process.exitCode = 1;
+});

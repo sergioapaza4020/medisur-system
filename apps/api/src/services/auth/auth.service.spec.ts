@@ -9,22 +9,51 @@ import { mockUsersService } from '@common/test-mocks/users.mock';
 import * as bcrypt from 'bcrypt';
 import { UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
+import { User } from 'src/entities/users/users.entity';
 
 describe('AuthService', () => {
   let service: AuthService;
   const getForAuthentication = jest.fn();
+  const getOneById = jest.fn();
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: UsersService, useValue: { ...mockUsersService, getForAuthentication } },
+        {
+          provide: UsersService,
+          useValue: { ...mockUsersService, getForAuthentication, getOneById },
+        },
         { provide: JwtService, useValue: mockJwtService },
         { provide: SessionsService, useValue: mockSessionService },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
+  });
+
+  it('includes only unique permissions from active roles and active permissions', async () => {
+    const permission = { name: 'role.get-all', isActive: true };
+    const user = {
+      idUser: 1,
+      roles: [
+        {
+          name: 'STAFF',
+          isActive: true,
+          permissions: [permission, permission, { name: 'role.update', isActive: false }],
+        },
+        { name: 'DOCTOR', isActive: false, permissions: [{ name: 'user.create', isActive: true }] },
+      ],
+    } as User;
+    getOneById.mockResolvedValue(user);
+    await expect(service.getSession(1, 2)).resolves.toMatchObject({
+      roles: ['STAFF'],
+      permissions: ['role.get-all'],
+    });
+    user.roles[0].permissions = [];
+    await expect(service.getSession(1, 2)).resolves.toMatchObject({ permissions: [] });
+    getOneById.mockResolvedValue(null);
+    await expect(service.getSession(1, 2)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('should be defined', () => {

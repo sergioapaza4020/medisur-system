@@ -18,7 +18,7 @@ export class UsersController {
     return this.usersService.getAll();
   }
 
-  @Permissions('user.create')
+  @Permissions('user.create', 'user.assign-roles')
   @Post()
   async create(@Body() userCreateDto: UserCreateDto) {
     return this.usersService.create(userCreateDto);
