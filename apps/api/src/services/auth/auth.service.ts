@@ -85,9 +85,14 @@ export class AuthService {
   }
 
   private buildSessionPayload(user: User, idSession: number) {
-    const roles = user.roles.map((r) => r.name);
+    const activeRoles = user.roles.filter((role) => role.isActive);
+    const roles = activeRoles.map((r) => r.name);
 
-    const permissions = [...new Set(user.roles.flatMap((r) => r.permissions.map((p) => p.name)))];
+    const permissions = [
+      ...new Set(
+        activeRoles.flatMap((r) => r.permissions.filter((p) => p.isActive).map((p) => p.name)),
+      ),
+    ];
 
     return {
       idUser: user.idUser,

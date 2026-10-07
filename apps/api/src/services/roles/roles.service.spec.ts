@@ -40,6 +40,29 @@ describe('RolesService', () => {
     service = module.get<RolesService>(RolesService);
   });
 
+  it('deduplicates an assignment and validates all permissions before changing the role', async () => {
+    const role = { idRole: 1, permissions: [] } as unknown as Role;
+    const permission = { idPermission: 1, name: 'role.get-all' } as Permission;
+    roleRepository.findOne.mockResolvedValue(role);
+    permissionsService.getOneByName.mockResolvedValue(permission);
+    await service.assignPermissions(1, [permission.name, permission.name], 7);
+    expect(role.permissions).toEqual([permission]);
+    expect(role.updatedBy).toBe(7);
+    expect(roleRepository.save).toHaveBeenCalledTimes(1);
+    jest.clearAllMocks();
+    await expect(service.assignPermissions(1, [permission.name], 7)).rejects.toThrow(
+      'already assigned',
+    );
+    expect(roleRepository.save).not.toHaveBeenCalled();
+    role.permissions = [];
+    permissionsService.getOneByName.mockResolvedValueOnce(permission).mockResolvedValueOnce(null);
+    await expect(service.assignPermissions(1, [permission.name, 'missing'], 7)).rejects.toThrow(
+      'not found',
+    );
+    expect(role.permissions).toEqual([]);
+    expect(roleRepository.save).not.toHaveBeenCalled();
+  });
+
   it('creates a role with its permissions in a single save', async () => {
     const permission = {
       idPermission: 1,
@@ -47,8 +70,8 @@ describe('RolesService', () => {
     } as Permission;
     const createdRole = {
       idRole: 1,
-      name: 'COORDINATOR',
-      description: 'Course coordinator',
+      name: 'STAFF',
+      description: 'Personal administrativo',
       permissions: [permission],
     } as Role;
 
@@ -58,19 +81,23 @@ describe('RolesService', () => {
     roleRepository.save.mockResolvedValue(createdRole);
 
     await expect(
-      service.create({
-        name: ' coordinator ',
-        description: 'Course coordinator',
-        permissionNames: [permission.name],
-      }),
+      service.create(
+        {
+          name: ' staff ',
+          description: 'Personal administrativo',
+          permissionNames: [permission.name],
+        },
+        7,
+      ),
     ).resolves.toBe(createdRole);
 
     expect(roleRepository.create).toHaveBeenCalledWith({
-      name: 'COORDINATOR',
-      description: 'Course coordinator',
+      name: 'STAFF',
+      description: 'Personal administrativo',
       permissions: [permission],
     });
     expect(roleRepository.save).toHaveBeenCalledTimes(1);
+    expect(createdRole.createdBy).toBe(7);
   });
 
   it('does not persist a role when a requested permission does not exist', async () => {
@@ -78,11 +105,14 @@ describe('RolesService', () => {
     permissionsService.getOneByName.mockResolvedValue(null);
 
     await expect(
-      service.create({
-        name: 'COORDINATOR',
-        description: 'Course coordinator',
-        permissionNames: ['role.unknown'],
-      }),
+      service.create(
+        {
+          name: 'STAFF',
+          description: 'Personal administrativo',
+          permissionNames: ['role.unknown'],
+        },
+        7,
+      ),
     ).rejects.toThrow(BadRequestException);
 
     expect(roleRepository.create).not.toHaveBeenCalled();
@@ -100,8 +130,8 @@ describe('RolesService', () => {
     } as Permission;
     const role = {
       idRole: 1,
-      name: 'COORDINATOR',
-      description: 'Course coordinator',
+      name: 'STAFF',
+      description: 'Personal administrativo',
       permissions: [previousPermission],
     } as Role;
 
@@ -110,17 +140,22 @@ describe('RolesService', () => {
     roleRepository.save.mockResolvedValue(role);
 
     await expect(
-      service.update(1, {
-        name: 'academic coordinator',
-        description: 'Updated description',
-        permissionNames: [updatedPermission.name],
-      }),
+      service.update(
+        1,
+        {
+          name: 'administrative staff',
+          description: 'Updated description',
+          permissionNames: [updatedPermission.name, updatedPermission.name],
+        },
+        7,
+      ),
     ).resolves.toBe(role);
 
     expect(role).toMatchObject({
-      name: 'ACADEMIC COORDINATOR',
+      name: 'ADMINISTRATIVE STAFF',
       description: 'Updated description',
       permissions: [updatedPermission],
+      updatedBy: 7,
     });
     expect(roleRepository.save).toHaveBeenCalledWith(role);
   });

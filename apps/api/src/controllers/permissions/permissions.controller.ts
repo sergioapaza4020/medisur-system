@@ -41,14 +41,20 @@ export class PermissionsController {
 
   @Permissions('permission.delete')
   @Delete(':idPermission')
-  async delete(@Param('idPermission', ParseIntPipe) idPermission: number) {
-    return this.permissionsService.delete(idPermission);
+  async delete(
+    @Param('idPermission', ParseIntPipe) idPermission: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.permissionsService.delete(idPermission, user.idUser);
   }
 
   @Permissions('permission.reactivate')
   @Patch('reactivate/:idPermission')
-  async reactivate(@Param('idPermission', ParseIntPipe) idPermission: number) {
-    return this.permissionsService.reactivate(idPermission);
+  async reactivate(
+    @Param('idPermission', ParseIntPipe) idPermission: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.permissionsService.reactivate(idPermission, user.idUser);
   }
 
   @Permissions('permission.update')
@@ -56,7 +62,8 @@ export class PermissionsController {
   async update(
     @Param('idPermission', ParseIntPipe) idPermission: number,
     @Body() dto: PermissionUpdateDto,
+    @CurrentUser() user: User,
   ) {
-    return this.permissionsService.update(idPermission, dto);
+    return this.permissionsService.update(idPermission, dto, user.idUser);
   }
 }

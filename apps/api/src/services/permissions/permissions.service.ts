@@ -43,25 +43,28 @@ export class PermissionsService {
     });
   }
 
-  async delete(idPermission: number) {
+  async delete(idPermission: number, authorId: number) {
     const permission = await this.permissionRepository.findOne({
       where: { idPermission, isActive: true },
     });
     if (!permission) throw new BadRequestException('Permission not found');
     permission.isActive = false;
+    permission.deletedBy = authorId;
+    permission.updatedBy = authorId;
     return this.permissionRepository.save(permission);
   }
 
-  async reactivate(idPermission: number) {
+  async reactivate(idPermission: number, authorId: number) {
     const permission = await this.permissionRepository.findOne({
       where: { idPermission, isActive: false },
     });
     if (!permission) throw new BadRequestException('Permission not found');
     permission.isActive = true;
+    permission.updatedBy = authorId;
     return this.permissionRepository.save(permission);
   }
 
-  async update(idPermission: number, dto: PermissionUpdateDto) {
+  async update(idPermission: number, dto: PermissionUpdateDto, authorId: number) {
     const record = await this.permissionRepository.findOne({
       where: { idPermission, isActive: true },
     });
@@ -75,6 +78,7 @@ export class PermissionsService {
     }
 
     this.permissionRepository.merge(record, dto, name === undefined ? {} : { name });
+    record.updatedBy = authorId;
     return this.permissionRepository.save(record);
   }
 }

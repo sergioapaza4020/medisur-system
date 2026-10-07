@@ -15,6 +15,8 @@ import { RolesAssignPermissionsDto } from 'src/dtos/roles/role-assign-permission
 import { RoleUpdateDto } from 'src/dtos/roles/role-update.dto';
 import { RoleCreateDto } from 'src/dtos/roles/roles.dto';
 import { RolesService } from 'src/services/roles/roles.service';
+import { CurrentUser } from '@core/decorators/current-user/current-user.decorator';
+import type { JwtPayload } from '@common/types/jwt-payload.type';
 
 @ApiBearerAuth('access-token')
 @Controller('roles')
@@ -28,10 +30,10 @@ export class RolesController {
     return this.rolesService.getAll();
   }
 
-  @Permissions('role.create')
+  @Permissions('role.create', 'role.assign-permissions')
   @Post()
-  async create(@Body() roleCreateDto: RoleCreateDto) {
-    return this.rolesService.create(roleCreateDto);
+  async create(@Body() roleCreateDto: RoleCreateDto, @CurrentUser() user: JwtPayload) {
+    return this.rolesService.create(roleCreateDto, user.idUser);
   }
 
   @Permissions('role.get-one-by-name')
@@ -51,28 +53,34 @@ export class RolesController {
   async assignPermissions(
     @Param('idRole', ParseIntPipe) idRole: number,
     @Body() roleAssignPermissionDto: RolesAssignPermissionsDto,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.rolesService.assignPermissions(idRole, roleAssignPermissionDto.permissionNames);
+    return this.rolesService.assignPermissions(
+      idRole,
+      roleAssignPermissionDto.permissionNames,
+      user.idUser,
+    );
   }
 
-  @Permissions('role.update')
+  @Permissions('role.update', 'role.assign-permissions')
   @Put(':idRole')
   async update(
     @Param('idRole', ParseIntPipe) idRole: number,
     @Body() roleUpdateDto: RoleUpdateDto,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.rolesService.update(idRole, roleUpdateDto);
+    return this.rolesService.update(idRole, roleUpdateDto, user.idUser);
   }
 
   @Permissions('role.delete')
   @Delete(':idRole')
-  async delete(@Param('idRole') idRole: number) {
-    return this.rolesService.delete(idRole);
+  async delete(@Param('idRole', ParseIntPipe) idRole: number, @CurrentUser() user: JwtPayload) {
+    return this.rolesService.delete(idRole, user.idUser);
   }
 
   @Permissions('role.reactivate')
   @Patch('reactivate/:idRole')
-  async reactivate(@Param('idRole') idRole: number) {
-    return this.rolesService.reactivate(idRole);
+  async reactivate(@Param('idRole', ParseIntPipe) idRole: number, @CurrentUser() user: JwtPayload) {
+    return this.rolesService.reactivate(idRole, user.idUser);
   }
 }

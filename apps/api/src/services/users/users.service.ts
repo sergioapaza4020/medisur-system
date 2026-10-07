@@ -21,7 +21,6 @@ export class UsersService {
   async getAll() {
     const qb = this.userRepository
       .createQueryBuilder('user')
-      .leftJoinAndSelect('user.careers', 'career')
       .leftJoinAndSelect('user.roles', 'roles')
       .orderBy('user.idUser', 'ASC');
 
@@ -38,11 +37,13 @@ export class UsersService {
     if (user) throw new BadRequestException('User already exists');
 
     const roles = await Promise.all(
-      userCreateDto.roleNames.map(async (name) => {
-        const role = await this.rolesService.getOneByName(name.toUpperCase());
-        if (!role) throw new BadRequestException(`Role not found: ${name}`);
-        return role;
-      }),
+      [...new Set(userCreateDto.roleNames.map((name) => name.toUpperCase().trim()))].map(
+        async (name) => {
+          const role = await this.rolesService.getOneByName(name);
+          if (!role) throw new BadRequestException(`Role not found: ${name}`);
+          return role;
+        },
+      ),
     );
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(userCreateDto.password, salt);
@@ -107,16 +108,18 @@ export class UsersService {
       relations: ['roles'],
     });
     if (!user) throw new BadRequestException('User not found');
-    for (const rn of roleNames) {
-      const role = await this.rolesService.getOneByName(rn.toUpperCase());
+    const roles = [...(user.roles ?? [])];
+    for (const rn of new Set(roleNames.map((name) => name.toUpperCase().trim()))) {
+      const role = await this.rolesService.getOneByName(rn);
       if (!role) throw new BadRequestException(`Role not found: ${rn}`);
 
-      const alreadyAssigned = user.roles?.some((r) => r.name === rn);
-      if (alreadyAssigned) throw new BadRequestException(`Role not found: ${rn}`);
+      const alreadyAssigned = roles.some((r) => r.idRole === role.idRole);
+      if (alreadyAssigned) throw new BadRequestException(`Role already assigned: ${rn}`);
 
-      user.roles?.push(role);
+      roles.push(role);
     }
 
+    user.roles = roles;
     user.updatedAt = new Date();
     return this.userRepository.save(user);
   }
