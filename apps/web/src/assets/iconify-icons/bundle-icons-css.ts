@@ -22,7 +22,6 @@ import { getIcons, getIconsCSS, stringToIcon } from '@iconify/utils';
  * Script configuration
  */
 interface BundleScriptCustomSVGConfig {
-  // eslint-disable-next-line lines-around-comment
   // Path to SVG files
   dir: string;
 
@@ -34,7 +33,6 @@ interface BundleScriptCustomSVGConfig {
 }
 
 interface BundleScriptCustomJSONConfig {
-  // eslint-disable-next-line lines-around-comment
   // Path to JSON file
   filename: string;
 
@@ -43,7 +41,6 @@ interface BundleScriptCustomJSONConfig {
 }
 
 interface BundleScriptConfig {
-  // eslint-disable-next-line lines-around-comment
   // Custom SVG to import and bundle
   svg?: BundleScriptCustomSVGConfig[];
 
@@ -110,7 +107,7 @@ const target = join(__dirname, 'generated-icons.css');
     await fs.mkdir(dir, {
       recursive: true,
     });
-  } catch (err) {
+  } catch {
     //
   }
 

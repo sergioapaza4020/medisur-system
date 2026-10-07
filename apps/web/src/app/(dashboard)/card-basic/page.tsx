@@ -1,5 +1,5 @@
 // MUI Imports
-import Grid from '@mui/material/Grid';
+import Grid from '@mui/material/GridLegacy';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 

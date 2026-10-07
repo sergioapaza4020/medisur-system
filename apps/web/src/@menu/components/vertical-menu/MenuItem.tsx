@@ -1,7 +1,7 @@
 'use client';
 
 // React Imports
-import { forwardRef, useEffect, useState } from 'react';
+import { forwardRef, useEffect, useRef } from 'react';
 import type { AnchorHTMLAttributes, ForwardRefRenderFunction, ReactElement, ReactNode } from 'react';
 
 // Next Imports
@@ -9,7 +9,6 @@ import { usePathname } from 'next/navigation';
 
 // Third-party Imports
 import classnames from 'classnames';
-import { useUpdateEffect } from 'react-use';
 import type { CSSObject } from '@emotion/styled';
 
 // Type Imports
@@ -67,11 +66,12 @@ const MenuItem: ForwardRefRenderFunction<HTMLLIElement, MenuItemProps> = (props,
     ...rest
   } = props;
 
-  // States
-  const [active, setActive] = useState(false);
-
   // Hooks
   const pathname = usePathname();
+  const active = Boolean(
+    rest.href && (exactMatch ? pathname === rest.href : activeUrl && pathname.includes(activeUrl)),
+  );
+  const previousActive = useRef(false);
   const { menuItemStyles, renderExpandedMenuItemIcon, textTruncate } = useVerticalMenu();
 
   const { toggleVerticalNav, isToggled, isBreakpointReached } = useVerticalNav();
@@ -101,25 +101,13 @@ const MenuItem: ForwardRefRenderFunction<HTMLLIElement, MenuItemProps> = (props,
     }
   };
 
-  // Change active state when the url changes
-  useEffect(() => {
-    const href = rest.href;
-
-    if (href) {
-      // Check if the current url matches any of the children urls
-      if (exactMatch ? pathname === href : activeUrl && pathname.includes(activeUrl)) {
-        setActive(true);
-      } else {
-        setActive(false);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
-
   // Call the onActiveChange callback when the active state changes.
-  useUpdateEffect(() => {
-    onActiveChange?.(active);
-  }, [active]);
+  useEffect(() => {
+    if (previousActive.current !== active) {
+      onActiveChange?.(active);
+      previousActive.current = active;
+    }
+  }, [active, onActiveChange]);
 
   return (
     <StyledVerticalMenuItem

@@ -1,29 +1,26 @@
 'use client';
 
 // React Imports
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 const useMediaQuery = (breakpoint?: string): boolean => {
-  // States
-  const [matches, setMatches] = useState(breakpoint === 'always');
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      if (breakpoint && breakpoint !== 'always') {
+        const media = window.matchMedia(`(max-width: ${breakpoint})`);
 
-  useEffect(() => {
-    if (breakpoint && breakpoint !== 'always') {
-      const media = window.matchMedia(`(max-width: ${breakpoint})`);
-
-      if (media.matches !== matches) {
-        setMatches(media.matches);
+        media.addEventListener('change', listener);
+        return () => media.removeEventListener('change', listener);
       }
+      return () => {};
+    },
+    [breakpoint],
+  );
 
-      const listener = () => setMatches(media.matches);
+  const getSnapshot = () =>
+    breakpoint === 'always' || Boolean(breakpoint && window.matchMedia(`(max-width: ${breakpoint})`).matches);
 
-      window.addEventListener('resize', listener);
-
-      return () => window.removeEventListener('resize', listener);
-    }
-  }, [matches, breakpoint]);
-
-  return matches;
+  return useSyncExternalStore(subscribe, getSnapshot, () => breakpoint === 'always');
 };
 
 export default useMediaQuery;

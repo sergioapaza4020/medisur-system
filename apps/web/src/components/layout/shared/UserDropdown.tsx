@@ -34,6 +34,7 @@ const BadgeContentSpan = styled('span')({
 const UserDropdown = () => {
   // States
   const [open, setOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
 
   // Refs
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -42,6 +43,7 @@ const UserDropdown = () => {
   const router = useRouter();
 
   const handleDropdownOpen = () => {
+    setAnchorEl(anchorRef.current);
     !open ? setOpen(true) : setOpen(false);
   };
 
@@ -79,7 +81,7 @@ const UserDropdown = () => {
         transition
         disablePortal
         placement='bottom-end'
-        anchorEl={anchorRef.current}
+        anchorEl={anchorEl}
         className='min-is-[240px] !mbs-4 z-[1]'
       >
         {({ TransitionProps, placement }) => (

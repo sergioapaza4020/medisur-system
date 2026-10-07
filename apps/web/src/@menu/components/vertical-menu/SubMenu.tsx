@@ -1,7 +1,7 @@
 'use client';
 
 // React Imports
-import { Children, cloneElement, forwardRef, useEffect, useId, useRef, useState } from 'react';
+import { Children, cloneElement, forwardRef, useEffect, useId, useRef } from 'react';
 import type {
   AnchorHTMLAttributes,
   ForwardRefRenderFunction,
@@ -117,15 +117,13 @@ const SubMenu: ForwardRefRenderFunction<HTMLLIElement, SubMenuProps> = (props, r
     ...rest
   } = props;
 
-  // States
-  const [active, setActive] = useState<boolean>(false);
-
   // Refs
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Hooks
   const id = useId();
   const pathname = usePathname();
+  const active = confirmUrlInChildren(children, pathname);
   const { isBreakpointReached } = useVerticalNav();
 
   const {
@@ -202,13 +200,9 @@ const SubMenu: ForwardRefRenderFunction<HTMLLIElement, SubMenuProps> = (props, r
   useEffect(() => {
     // Check if the current url matches any of the children urls
     if (confirmUrlInChildren(children, pathname)) {
-      setActive(true);
-
       if (openSubmenusRef?.current.findIndex((submenu) => submenu.id === id) === -1) {
         openSubmenusRef?.current.push({ level, label, active: true, id });
       }
-    } else {
-      setActive(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
@@ -237,7 +231,6 @@ const SubMenu: ForwardRefRenderFunction<HTMLLIElement, SubMenuProps> = (props, r
   );
 
   return (
-    // eslint-disable-next-line lines-around-comment
     /* Sub Menu */
     <StyledSubMenu
       ref={ref}
@@ -313,7 +306,6 @@ const SubMenu: ForwardRefRenderFunction<HTMLLIElement, SubMenuProps> = (props, r
                 open: isSubMenuOpen,
               })
             ) : (
-              // eslint-disable-next-line lines-around-comment
               /* Expanded Arrow Icon */
               <StyledVerticalNavExpandIcon open={isSubMenuOpen} transitionDuration={transitionDuration}>
                 <ChevronRight fontSize='1rem' />

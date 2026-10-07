@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { SyntheticEvent, ReactElement } from 'react';
 
 // MUI Imports
-import Grid from '@mui/material/Grid';
+import Grid from '@mui/material/GridLegacy';
 import Tab from '@mui/material/Tab';
 import TabContext from '@mui/lab/TabContext';
 import TabList from '@mui/lab/TabList';

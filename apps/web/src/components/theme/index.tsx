@@ -5,12 +5,7 @@ import { useMemo } from 'react';
 
 // MUI Imports
 import { deepmerge } from '@mui/utils';
-import {
-  Experimental_CssVarsProvider as CssVarsProvider,
-  experimental_extendTheme as extendTheme,
-  lighten,
-  darken,
-} from '@mui/material/styles';
+import { CssVarsProvider, extendTheme, lighten, darken } from '@mui/material/styles';
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter';
 import CssBaseline from '@mui/material/CssBaseline';
 import type {} from '@mui/material/themeCssVarsAugmentation'; //! Do not remove this import otherwise you will get type errors while making a production build

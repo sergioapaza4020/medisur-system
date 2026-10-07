@@ -1,5 +1,5 @@
 // MUI Imports
-import Grid from '@mui/material/Grid';
+import Grid from '@mui/material/GridLegacy';
 
 // Component Imports
 import FormLayoutsBasic from '@views/form-layouts/FormLayoutsBasic';
