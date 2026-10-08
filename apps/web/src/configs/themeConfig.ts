@@ -23,8 +23,8 @@ export type Config = {
 };
 
 const themeConfig: Config = {
-  templateName: 'Materio',
-  settingsCookieName: 'materio-mui-next-free-demo',
+  templateName: 'Medisur',
+  settingsCookieName: 'medisur-theme',
   mode: 'light', // 'light', 'dark'
   layoutPadding: 24, // Common padding for header, content, footer layout components (in px)
   compactContentWidth: 1440, // in px

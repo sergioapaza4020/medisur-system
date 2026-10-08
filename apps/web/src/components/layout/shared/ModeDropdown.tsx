@@ -41,7 +41,7 @@ const ModeDropdown = () => {
   return (
     <>
       <Tooltip
-        title={settings.mode + ' Mode'}
+        title={`Modo ${settings.mode === 'light' ? 'claro' : 'oscuro'}`}
         onOpen={() => setTooltipOpen(true)}
         onClose={() => setTooltipOpen(false)}
         open={tooltipOpen}
