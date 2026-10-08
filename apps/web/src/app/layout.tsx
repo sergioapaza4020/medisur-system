@@ -1,6 +1,8 @@
 // Third-party Imports
 import 'react-perfect-scrollbar/dist/css/styles.css';
 
+import { InitColorSchemeScript } from '@mui/material';
+
 // Type Imports
 import type { ChildrenType } from '@core/types';
 
@@ -11,9 +13,9 @@ import '@/app/globals.css';
 import '@assets/iconify-icons/generated-icons.css';
 
 export const metadata = {
-  title: 'Demo: Materio - NextJS Dashboard Free',
-  description:
-    'Develop next-level web apps with Materio Dashboard Free - NextJS. Now, updated with lightning-fast routing powered by MUI and App router.',
+  title: 'MEDISUR',
+  description: 'Sistema web de gestión del Centro Médico de Especialidades MEDISUR',
+  manifest: '/manifest.webmanifest',
 };
 
 const RootLayout = ({ children }: ChildrenType) => {
@@ -21,8 +23,11 @@ const RootLayout = ({ children }: ChildrenType) => {
   const direction = 'ltr';
 
   return (
-    <html id='__next' dir={direction}>
-      <body className='flex is-full min-bs-full flex-auto flex-col'>{children}</body>
+    <html lang='es' suppressHydrationWarning id='__next' dir={direction}>
+      <body className='flex is-full min-bs-full flex-auto flex-col'>
+        <InitColorSchemeScript attribute='class' />
+        {children}
+      </body>
     </html>
   );
 };

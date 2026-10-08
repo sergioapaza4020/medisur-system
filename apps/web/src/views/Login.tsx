@@ -61,14 +61,14 @@ const Login = ({ mode }: { mode: Mode }) => {
           </Link>
           <div className='flex flex-col gap-5'>
             <div>
-              <Typography variant='h4'>{`Welcome to ${themeConfig.templateName}!👋🏻`}</Typography>
-              <Typography className='mbs-1'>Please sign-in to your account and start the adventure</Typography>
+              <Typography variant='h4'>{`Bienvenido a ${themeConfig.templateName}!👋🏻`}</Typography>
+              <Typography className='mbs-1'>Por favor inicia sesión con tu cuenta para ingresar</Typography>
             </div>
             <form noValidate autoComplete='off' onSubmit={handleSubmit} className='flex flex-col gap-5'>
-              <TextField autoFocus fullWidth label='Email' />
+              <TextField autoFocus fullWidth label='Correo electrónico' />
               <TextField
                 fullWidth
-                label='Password'
+                label='Contraseña'
                 id='outlined-adornment-password'
                 type={isPasswordShown ? 'text' : 'password'}
                 InputProps={{
@@ -87,21 +87,21 @@ const Login = ({ mode }: { mode: Mode }) => {
                 }}
               />
               <div className='flex justify-between items-center gap-x-3 gap-y-1 flex-wrap'>
-                <FormControlLabel control={<Checkbox />} label='Remember me' />
+                <FormControlLabel control={<Checkbox />} label='Recuérdame' />
                 <Typography className='text-end' color='primary' component={Link} href='/forgot-password'>
-                  Forgot password?
+                  ¿Olvidaste tu contraseña?
                 </Typography>
               </div>
               <Button fullWidth variant='contained' type='submit'>
-                Log In
+                Iniciar sesión
               </Button>
               <div className='flex justify-center items-center flex-wrap gap-2'>
-                <Typography>New on our platform?</Typography>
+                <Typography>¿Nuevo en nuestra plataforma?</Typography>
                 <Typography component={Link} href='/register' color='primary'>
-                  Create an account
+                  Crea tu cuenta
                 </Typography>
               </div>
-              <Divider className='gap-3'>or</Divider>
+              <Divider className='gap-3'>o inicia sesión con</Divider>
               <div className='flex justify-center items-center gap-2'>
                 <IconButton size='small' className='text-facebook'>
                   <i className='ri-facebook-fill' />

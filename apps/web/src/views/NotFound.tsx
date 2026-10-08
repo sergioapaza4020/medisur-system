@@ -31,16 +31,16 @@ const NotFound = ({ mode }: { mode: Mode }) => {
           <Typography className='font-medium text-8xl' color='text.primary'>
             404
           </Typography>
-          <Typography variant='h4'>Page Not Found ⚠️</Typography>
-          <Typography>We couldn&#39;t find the page you are looking for.</Typography>
+          <Typography variant='h4'>Página no encontrada ⚠️</Typography>
+          <Typography>La página que estabas buscando no se encontró</Typography>
         </div>
         <img
           alt='error-illustration'
           src='/images/illustrations/characters/5.png'
           className='object-cover bs-[400px] md:bs-[450px] lg:bs-[500px]'
         />
-        <Button href='/' component={Link} variant='contained'>
-          Back to Home
+        <Button href='/dashboard' component={Link} variant='contained'>
+          Volver a la pantalla principal
         </Button>
       </div>
       <Illustrations maskImg={{ src: miscBackground }} />

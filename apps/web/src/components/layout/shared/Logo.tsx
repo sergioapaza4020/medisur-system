@@ -4,10 +4,9 @@
 import type { CSSProperties } from 'react';
 
 // Third-party Imports
-import styled from '@emotion/styled';
+import Image from 'next/image';
 
-// Component Imports
-import MaterioLogo from '@core/svg/Logo';
+import styled from '@emotion/styled';
 
 // Config Imports
 import themeConfig from '@configs/themeConfig';
@@ -26,11 +25,19 @@ const LogoText = styled.span<LogoTextProps>`
   margin-inline-start: 10px;
 `;
 
-const Logo = ({ color }: { color?: CSSProperties['color'] }) => {
+const Logo = ({
+  color,
+  justLogo,
+  logoSize,
+}: {
+  color?: CSSProperties['color'];
+  justLogo?: boolean;
+  logoSize?: number;
+}) => {
   return (
     <div className='flex items-center min-bs-[24px]'>
-      <MaterioLogo className='text-[22px] text-primary' />
-      <LogoText color={color}>{themeConfig.templateName}</LogoText>
+      <Image src='/images/logo.png' alt='Logo' width={logoSize ?? 50} height={logoSize ?? 50} />
+      {!justLogo ? <LogoText color={color}>{themeConfig.templateName}</LogoText> : <></>}
     </div>
   );
 };
