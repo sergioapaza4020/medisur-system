@@ -9,6 +9,7 @@ import { User } from 'src/entities/users/users.entity';
 import { SessionsService } from '../sessions/sessions.service';
 import { Request } from 'express';
 import { UAParser } from 'ua-parser-js';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -22,10 +23,10 @@ export class AuthService {
     const { username, password } = loginDto;
 
     const user = await this.userService.getForAuthentication(username);
-    if (!user) throw new UnauthorizedException('User not found');
+    if (!user?.isActive) throw new UnauthorizedException('Credenciales inválidas');
 
     const checkPassword = await bcrypt.compare(password, user.password);
-    if (!checkPassword) throw new UnauthorizedException('Wrong password');
+    if (!checkPassword) throw new UnauthorizedException('Credenciales inválidas');
 
     Reflect.deleteProperty(user, 'password');
     return user;
@@ -35,7 +36,7 @@ export class AuthService {
     const user = await this.validateUser(loginDto);
 
     const refreshToken = this.jwtService.sign(
-      { idUser: user.idUser },
+      { idUser: user.idUser, jti: randomUUID() },
       {
         secret: process.env.JWT_ACCESS_REFRESH,
         expiresIn: process.env.JWT_ACCESS_REFRESH_EXPIRES_IN as number | undefined,
@@ -73,7 +74,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      userSession,
+      userSession: { idSession: userSession.idSession, expiresAt: userSession.expiresAt },
     };
   }
 
@@ -106,8 +107,9 @@ export class AuthService {
   }
 
   async getSession(idUser: number, idSession: number) {
+    await this.sessionService.validateAccessSession(idUser, idSession);
     const user = await this.userService.getOneById(idUser);
-    if (!user) throw new UnauthorizedException('User not found');
+    if (!user?.isActive) throw new UnauthorizedException('Sesión no válida');
 
     return this.buildSessionPayload(user, idSession);
   }
@@ -132,11 +134,9 @@ export class AuthService {
         expiresIn: process.env.JWT_ACCESS_SECRET_EXPIRES_IN as number | undefined,
       });
 
-      await this.sessionService.updateLastSessionUsed(session);
-
       return { accessToken: newAccessToken };
-    } catch (error) {
-      throw new Error(`Invalid token refresh: ${(error as Error).message}`);
+    } catch {
+      throw new UnauthorizedException('Sesión no válida');
     }
   }
 }

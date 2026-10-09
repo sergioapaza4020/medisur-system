@@ -82,6 +82,7 @@ export class SessionsService {
     });
 
     for (const session of sessions) {
+      if (!session.user.isActive || session.expiresAt <= new Date()) continue;
       const isMatch = await bcrypt.compare(refreshToken, session.refreshToken);
       if (isMatch) {
         return session;
@@ -89,6 +90,24 @@ export class SessionsService {
     }
 
     throw new UnauthorizedException('Invalid token refresh');
+  }
+
+  async validateAccessSession(idUser: number, idSession: number): Promise<UserSession> {
+    if (
+      !Number.isInteger(idUser) ||
+      !Number.isInteger(idSession) ||
+      idUser <= 0 ||
+      idSession <= 0
+    ) {
+      throw new UnauthorizedException('Sesión no válida');
+    }
+    const session = await this.sessionRepository.findOne({
+      where: { idSession, user: { idUser, isActive: true }, isActive: true },
+    });
+    if (!session || session.expiresAt <= new Date()) {
+      throw new UnauthorizedException('Sesión no válida');
+    }
+    return session;
   }
 
   async updateLastSessionUsed(session: UserSession): Promise<UserSession> {
@@ -146,6 +165,9 @@ export class SessionsService {
 
   async logout(refreshToken: string, revokedBy?: User) {
     const session = await this.validateRefreshToken(refreshToken);
+    if (!revokedBy || session.user.idUser !== revokedBy.idUser) {
+      throw new UnauthorizedException('Sesión no válida');
+    }
 
     return this.revokeSession(session, revokedBy);
   }
