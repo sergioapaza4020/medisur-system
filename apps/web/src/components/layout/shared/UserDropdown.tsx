@@ -16,11 +16,29 @@ import Paper from '@mui/material/Paper';
 import Popper from '@mui/material/Popper';
 import Typography from '@mui/material/Typography';
 
+import { useAuth } from '@/components/auth/AuthGuard';
+
 const UserDropdown = () => {
   const [open, setOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
+  const { user, logout } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } catch {
+      // Local credentials are removed even if the API is unavailable.
+    } finally {
+      setOpen(false);
+      router.replace('/login');
+      router.refresh();
+      setIsLoggingOut(false);
+    }
+  };
 
   const closeMenu = () => {
     setOpen(false);
@@ -62,7 +80,7 @@ const UserDropdown = () => {
         <Typography
           sx={{ display: { xs: 'none', md: 'block' }, fontWeight: 600, color: 'text.primary', fontSize: '0.875rem' }}
         >
-          Mi cuenta
+          {user?.name || user?.username || 'Mi cuenta'}
         </Typography>
         <i aria-hidden='true' className={open ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} />
       </ButtonBase>
@@ -96,7 +114,9 @@ const UserDropdown = () => {
                     <Avatar sx={{ width: 48, height: 48, bgcolor: 'primary.lighterOpacity', color: 'primary.main' }}>
                       <i aria-hidden='true' className='ri-user-line' />
                     </Avatar>
-                    <Typography sx={{ fontWeight: 600, color: 'text.primary' }}>Mi cuenta</Typography>
+                    <Typography sx={{ fontWeight: 600, color: 'text.primary' }}>
+                      {user?.name || user?.username}
+                    </Typography>
                   </Box>
                   <Divider sx={{ mx: 4 }} />
                   <MenuList
@@ -112,10 +132,8 @@ const UserDropdown = () => {
                     sx={{ p: 3 }}
                   >
                     <MenuItem
-                      onClick={() => {
-                        setOpen(false);
-                        router.push('/login');
-                      }}
+                      onClick={handleLogout}
+                      disabled={isLoggingOut}
                       sx={{
                         gap: 3,
                         minHeight: 48,
@@ -127,7 +145,7 @@ const UserDropdown = () => {
                     >
                       <i aria-hidden='true' className='ri-logout-box-r-line' />
                       <Typography sx={{ color: 'inherit', fontSize: '0.875rem', fontWeight: 500 }}>
-                        Cerrar sesión
+                        {isLoggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
                       </Typography>
                     </MenuItem>
                   </MenuList>

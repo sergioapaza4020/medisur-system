@@ -36,6 +36,7 @@ describe('AuthService', () => {
     const permission = { name: 'role.get-all', isActive: true };
     const user = {
       idUser: 1,
+      isActive: true,
       roles: [
         {
           name: 'STAFF',
@@ -64,6 +65,7 @@ describe('AuthService', () => {
     getForAuthentication.mockResolvedValue({
       idUser: 1,
       username: 'test',
+      isActive: true,
       password: await bcrypt.hash('secret', 4),
       roles: [],
     });
@@ -76,13 +78,16 @@ describe('AuthService', () => {
     } as Request);
     expect(getForAuthentication).toHaveBeenCalledWith('test');
     expect(sessions).toHaveBeenCalledWith(
-      expect.objectContaining({ user: { idUser: 1, username: 'test', roles: [] } }),
+      expect.objectContaining({ user: { idUser: 1, username: 'test', isActive: true, roles: [] } }),
     );
     expect(JSON.stringify(response)).not.toContain('password');
   });
 
   it('rejects invalid credentials and missing or inactive users', async () => {
-    getForAuthentication.mockResolvedValue({ password: await bcrypt.hash('secret', 4) });
+    getForAuthentication.mockResolvedValue({
+      isActive: true,
+      password: await bcrypt.hash('secret', 4),
+    });
     await expect(
       service.validateUser({ username: 'test', password: 'wrong' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);

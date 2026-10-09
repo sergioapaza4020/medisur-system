@@ -16,26 +16,49 @@ import InputAdornment from '@mui/material/InputAdornment';
 import Checkbox from '@mui/material/Checkbox';
 import Button from '@mui/material/Button';
 import FormControlLabel from '@mui/material/FormControlLabel';
-import Divider from '@mui/material/Divider';
+import Alert from '@mui/material/Alert';
 
 import type { Mode } from '@core/types';
 import Logo from '@components/layout/shared/Logo';
 import themeConfig from '@configs/themeConfig';
 import MissionCarousel from './MissionCarousel';
 import ModeDropdown from '@/components/layout/shared/ModeDropdown';
+import { authService } from '@/services/auth/authService';
+import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 
 // Reserved for a future local medical photograph; no remote asset is required.
 const medicalImage: string | undefined = undefined;
 
 const Login = ({ mode }: { mode: Mode }) => {
   const [isPasswordShown, setIsPasswordShown] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const handleClickShowPassword = () => setIsPasswordShown((show) => !show);
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    router.push('/');
+    if (isSubmitting) return;
+    if (!username.trim() || !password) {
+      setError('Ingresa tu usuario y contraseña');
+      return;
+    }
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await authService.login({ username: username.trim(), password }, remember);
+      setPassword('');
+      router.replace('/dashboard');
+    } catch (error) {
+      setError(getApiErrorMessage(error));
+      setPassword('');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -148,20 +171,24 @@ const Login = ({ mode }: { mode: Mode }) => {
                 '& .MuiInputLabel-root': { color: 'text.secondary' },
               }}
             >
+              {error && <Alert severity='error'>{error}</Alert>}
               <TextField
                 autoFocus
                 fullWidth
-                id='login-email'
-                name='email'
-                type='email'
-                autoComplete='email'
-                label='Correo electrónico'
-                placeholder='tu@correo.com'
+                id='login-username'
+                name='username'
+                autoComplete='username'
+                label='Usuario'
+                placeholder='Ingresa tu nombre de usuario'
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                disabled={isSubmitting}
+                required
                 InputLabelProps={{ shrink: true }}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position='start'>
-                      <i aria-hidden='true' className='ri-mail-line' />
+                      <i aria-hidden='true' className='ri-user-line' />
                     </InputAdornment>
                   ),
                 }}
@@ -171,6 +198,10 @@ const Login = ({ mode }: { mode: Mode }) => {
                 label='Contraseña'
                 id='outlined-adornment-password'
                 name='password'
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                disabled={isSubmitting}
+                required
                 autoComplete='current-password'
                 placeholder='Ingresa tu contraseña'
                 InputLabelProps={{ shrink: true }}
@@ -209,7 +240,13 @@ const Login = ({ mode }: { mode: Mode }) => {
                 }}
               >
                 <FormControlLabel
-                  control={<Checkbox />}
+                  control={
+                    <Checkbox
+                      checked={remember}
+                      onChange={(event) => setRemember(event.target.checked)}
+                      disabled={isSubmitting}
+                    />
+                  }
                   label='Recuérdame'
                   sx={{ mr: 0, '& .MuiTypography-root': { fontSize: '0.875rem' } }}
                 />
@@ -226,11 +263,12 @@ const Login = ({ mode }: { mode: Mode }) => {
                 fullWidth
                 variant='contained'
                 type='submit'
+                disabled={isSubmitting}
                 disableElevation
                 endIcon={<i aria-hidden='true' className='ri-arrow-right-line' />}
                 sx={{ minHeight: 52, borderRadius: 2.5, fontSize: '1rem' }}
               >
-                Iniciar sesión
+                {isSubmitting ? 'Ingresando…' : 'Iniciar sesión'}
               </Button>
               <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5, textAlign: 'center' }}>
                 <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
@@ -244,30 +282,6 @@ const Login = ({ mode }: { mode: Mode }) => {
                 >
                   Crea tu cuenta
                 </Typography>
-              </Box>
-              <Divider sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>o inicia sesión con</Divider>
-              <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3 }}>
-                {[
-                  { name: 'Google', icon: 'ri-google-fill', color: 'text-secondary' },
-                  { name: 'Facebook', icon: 'ri-facebook-fill', color: 'text-facebook' },
-                ].map((provider) => (
-                  <IconButton
-                    key={provider.name}
-                    type='button'
-                    aria-label={`Iniciar sesión con ${provider.name}`}
-                    className={provider.color}
-                    sx={{
-                      width: 48,
-                      height: 48,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 2.5,
-                      '&:hover': { bgcolor: 'primary.lighterOpacity' },
-                    }}
-                  >
-                    <i aria-hidden='true' className={provider.icon} />
-                  </IconButton>
-                ))}
               </Box>
             </Box>
           </CardContent>
