@@ -6,6 +6,9 @@ import type { ChangeEvent } from 'react';
 
 // MUI Imports
 import Grid from '@mui/material/GridLegacy';
+import Box from '@mui/material/Box';
+import Avatar from '@mui/material/Avatar';
+import CardHeader from '@mui/material/CardHeader';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Button from '@mui/material/Button';
@@ -90,14 +93,45 @@ const AccountDetails = () => {
   };
 
   return (
-    <Card>
-      <CardContent className='mbe-5'>
-        <div className='flex max-sm:flex-col items-center gap-6'>
-          <img height={100} width={100} className='rounded' src={imgSrc} alt='Profile' />
+    <Card
+      sx={{
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 3,
+        boxShadow: (theme) => theme.shadows[1],
+        '& .MuiCardContent-root': { p: { xs: 5, sm: 7 } },
+        '& .MuiOutlinedInput-root': {
+          minHeight: 56,
+          borderRadius: 2,
+          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
+        },
+        '& .MuiButton-root': { minHeight: 40, borderRadius: 2 },
+      }}
+    >
+      <CardHeader
+        title='Información de la cuenta'
+        subheader='Gestiona tu información personal y tus preferencias en MEDISUR.'
+        titleTypographyProps={{ component: 'h1', variant: 'h5', fontWeight: 600 }}
+        sx={{ p: { xs: 5, sm: 7 }, pb: { xs: 0, sm: 0 }, '& .MuiCardHeader-subheader': { mt: 1 } }}
+      />
+      <CardContent sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: { xs: 'flex-start', sm: 'center' },
+            gap: 5,
+          }}
+        >
+          <Avatar
+            src={imgSrc}
+            alt='Foto de perfil'
+            sx={{ width: 96, height: 96, border: 3, borderColor: 'primary.lightOpacity' }}
+          />
           <div className='flex flex-grow flex-col gap-4'>
             <div className='flex flex-col sm:flex-row gap-4'>
               <Button component='label' size='small' variant='contained' htmlFor='account-settings-upload-image'>
-                Upload New Photo
+                Subir nueva foto
                 <input
                   hidden
                   type='file'
@@ -107,13 +141,15 @@ const AccountDetails = () => {
                   id='account-settings-upload-image'
                 />
               </Button>
-              <Button size='small' variant='outlined' color='error' onClick={handleFileInputReset}>
-                Reset
+              <Button size='small' variant='outlined' color='secondary' onClick={handleFileInputReset}>
+                Restablecer
               </Button>
             </div>
-            <Typography>Allowed JPG, GIF or PNG. Max size of 800K</Typography>
+            <Typography variant='body2' color='text.secondary'>
+              Formatos JPG o PNG. Tamaño máximo recomendado: 800 KB.
+            </Typography>
           </div>
-        </div>
+        </Box>
       </CardContent>
       <CardContent>
         <form onSubmit={(e) => e.preventDefault()}>
@@ -121,7 +157,7 @@ const AccountDetails = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label='First Name'
+                label='Nombre'
                 value={formData.firstName}
                 placeholder='John'
                 onChange={(e) => handleFormChange('firstName', e.target.value)}
@@ -130,7 +166,7 @@ const AccountDetails = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label='Last Name'
+                label='Apellido'
                 value={formData.lastName}
                 placeholder='Doe'
                 onChange={(e) => handleFormChange('lastName', e.target.value)}
@@ -139,7 +175,7 @@ const AccountDetails = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label='Email'
+                label='Correo electrónico'
                 value={formData.email}
                 placeholder='john.doe@gmail.com'
                 onChange={(e) => handleFormChange('email', e.target.value)}
@@ -148,7 +184,7 @@ const AccountDetails = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label='Organization'
+                label='Organización'
                 value={formData.organization}
                 placeholder='ThemeSelection'
                 onChange={(e) => handleFormChange('organization', e.target.value)}
@@ -157,7 +193,7 @@ const AccountDetails = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label='Phone Number'
+                label='Teléfono'
                 value={formData.phoneNumber}
                 placeholder='+1 (234) 567-8901'
                 onChange={(e) => handleFormChange('phoneNumber', e.target.value)}
@@ -166,7 +202,7 @@ const AccountDetails = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label='Address'
+                label='Dirección'
                 value={formData.address}
                 placeholder='Address'
                 onChange={(e) => handleFormChange('address', e.target.value)}
@@ -175,7 +211,7 @@ const AccountDetails = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label='State'
+                label='Estado'
                 value={formData.state}
                 placeholder='New York'
                 onChange={(e) => handleFormChange('state', e.target.value)}
@@ -185,7 +221,7 @@ const AccountDetails = () => {
               <TextField
                 fullWidth
                 type='number'
-                label='Zip Code'
+                label='Código postal'
                 value={formData.zipCode}
                 placeholder='123456'
                 onChange={(e) => handleFormChange('zipCode', e.target.value)}
@@ -193,9 +229,10 @@ const AccountDetails = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Country</InputLabel>
+                <InputLabel id='account-country-label'>País</InputLabel>
                 <Select
-                  label='Country'
+                  labelId='account-country-label'
+                  label='País'
                   value={formData.country}
                   onChange={(e) => handleFormChange('country', e.target.value)}
                 >
@@ -208,10 +245,11 @@ const AccountDetails = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Language</InputLabel>
+                <InputLabel id='account-language-label'>Idioma</InputLabel>
                 <Select
                   multiple
-                  label='Language'
+                  labelId='account-language-label'
+                  label='Idioma'
                   value={language}
                   onChange={handleChange}
                   renderValue={(selected) => (
@@ -241,9 +279,10 @@ const AccountDetails = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>TimeZone</InputLabel>
+                <InputLabel id='account-timezone-label'>Zona horaria</InputLabel>
                 <Select
-                  label='TimeZone'
+                  labelId='account-timezone-label'
+                  label='Zona horaria'
                   value={formData.timezone}
                   onChange={(e) => handleFormChange('timezone', e.target.value)}
                   MenuProps={{ PaperProps: { style: { maxHeight: 250 } } }}
@@ -270,9 +309,10 @@ const AccountDetails = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Currency</InputLabel>
+                <InputLabel id='account-currency-label'>Moneda</InputLabel>
                 <Select
-                  label='Currency'
+                  labelId='account-currency-label'
+                  label='Moneda'
                   value={formData.currency}
                   onChange={(e) => handleFormChange('currency', e.target.value)}
                 >
@@ -283,12 +323,17 @@ const AccountDetails = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} className='flex gap-4 flex-wrap'>
+            <Grid
+              item
+              xs={12}
+              className='flex gap-4 flex-wrap'
+              sx={{ mt: 1, '& .MuiButton-root': { flexGrow: { xs: 1, sm: 0 } } }}
+            >
               <Button variant='contained' type='submit'>
-                Save Changes
+                Guardar cambios
               </Button>
               <Button variant='outlined' type='reset' color='secondary' onClick={() => setFormData(initialData)}>
-                Reset
+                Restablecer
               </Button>
             </Grid>
           </Grid>

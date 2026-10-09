@@ -23,15 +23,32 @@ const AccountSettings = ({ tabContentList }: { tabContentList: { [key: string]: 
     <TabContext value={activeTab}>
       <Grid container spacing={6}>
         <Grid item xs={12}>
-          <TabList onChange={handleChange} variant='scrollable'>
-            <Tab label='Account' icon={<i className='ri-user-3-line' />} iconPosition='start' value='account' />
+          <TabList
+            onChange={handleChange}
+            variant='scrollable'
+            aria-label='Configuración de cuenta'
+            sx={{
+              borderBottom: 1,
+              borderColor: 'divider',
+              '& .MuiTab-root': {
+                minHeight: 52,
+                px: { xs: 3, sm: 5 },
+                textTransform: 'none',
+                fontWeight: 500,
+                color: 'text.secondary',
+                '&.Mui-selected': { color: 'primary.main' },
+                '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
+              },
+              '& .MuiTabs-indicator': { borderRadius: 1 },
+            }}
+          >
+            <Tab label='Cuenta' icon={<i className='ri-user-3-line' />} iconPosition='start' value='account' />
             <Tab
-              label='Notifications'
+              label='Notificaciones'
               icon={<i className='ri-notification-3-line' />}
               iconPosition='start'
               value='notifications'
             />
-            <Tab label='Connections' icon={<i className='ri-link' />} iconPosition='start' value='connections' />
           </TabList>
         </Grid>
         <Grid item xs={12}>

@@ -1,5 +1,5 @@
 // Next Imports
-import { Inter } from 'next/font/google';
+import { Manrope } from 'next/font/google';
 
 // MUI Imports
 import type { Theme } from '@mui/material/styles';
@@ -15,7 +15,11 @@ import shadows from './shadows';
 import customShadows from './customShadows';
 import typography from './typography';
 
-const inter = Inter({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700', '800', '900'] });
+const manrope = Manrope({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  display: 'swap',
+});
 
 const theme = (mode: SystemMode, direction: Theme['direction']): Theme => {
   return {
@@ -34,13 +38,13 @@ const theme = (mode: SystemMode, direction: Theme['direction']): Theme => {
       },
     },
     shadows: shadows(mode),
-    typography: typography(inter.style.fontFamily),
+    typography: typography(manrope.style.fontFamily),
     customShadows: customShadows(mode),
     mainColorChannels: {
-      light: '46 38 61',
-      dark: '231 227 252',
-      lightShadow: '46 38 61',
-      darkShadow: '19 17 32',
+      light: '30 41 59',
+      dark: '226 232 240',
+      lightShadow: '15 23 42',
+      darkShadow: '2 6 23',
     },
   } as Theme;
 };

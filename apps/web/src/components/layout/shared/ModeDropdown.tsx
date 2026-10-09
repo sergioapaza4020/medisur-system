@@ -47,7 +47,12 @@ const ModeDropdown = () => {
         open={tooltipOpen}
         PopperProps={{ className: 'capitalize' }}
       >
-        <IconButton ref={anchorRef} onClick={handleToggle} className='text-textPrimary'>
+        <IconButton
+          aria-label={settings.mode === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
+          ref={anchorRef}
+          onClick={handleToggle}
+          className='text-textPrimary'
+        >
           <i className={getModeIcon()} />
         </IconButton>
       </Tooltip>

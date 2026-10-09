@@ -4,7 +4,13 @@ import FooterContent from './FooterContent';
 
 const Footer = () => {
   return (
-    <LayoutFooter>
+    <LayoutFooter
+      overrideStyles={{
+        backgroundColor: 'var(--mui-palette-background-paper)',
+        borderTop: '1px solid var(--mui-palette-divider)',
+        boxShadow: 'none',
+      }}
+    >
       <FooterContent />
     </LayoutFooter>
   );

@@ -1,5 +1,5 @@
 // Component Imports
-import Register from '@views/Register';
+import Register from '@/views/pages/auth/Register';
 
 // Server Action Imports
 import { getServerMode } from '@core/utils/serverHelpers';
