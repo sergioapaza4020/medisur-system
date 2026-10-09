@@ -1,21 +1,20 @@
 'use client';
 
-// Hook Imports
+import IconButton from '@mui/material/IconButton';
+
 import useVerticalNav from '@menu/hooks/useVerticalNav';
 
 const NavToggle = () => {
-  // Hooks
-  const { toggleVerticalNav } = useVerticalNav();
-
-  const handleClick = () => {
-    toggleVerticalNav();
-  };
+  const { toggleVerticalNav, isToggled } = useVerticalNav();
 
   return (
-    <>
-      <i className='ri-menu-line text-xl cursor-pointer' onClick={handleClick} />
-      {/* Comment following code and uncomment above code in order to toggle menu on desktop screens as well */}
-    </>
+    <IconButton
+      aria-label={isToggled ? 'Cerrar menú de navegación' : 'Abrir menú de navegación'}
+      aria-expanded={Boolean(isToggled)}
+      onClick={() => toggleVerticalNav()}
+    >
+      <i aria-hidden='true' className='ri-menu-line' />
+    </IconButton>
   );
 };
 

@@ -1,131 +1,137 @@
 'use client';
 
-// React Imports
 import { useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
 
-// Next Imports
 import { useRouter } from 'next/navigation';
 
-// MUI Imports
-import { styled } from '@mui/material/styles';
-import Badge from '@mui/material/Badge';
 import Avatar from '@mui/material/Avatar';
-import Popper from '@mui/material/Popper';
-import Fade from '@mui/material/Fade';
-import Paper from '@mui/material/Paper';
+import Box from '@mui/material/Box';
+import ButtonBase from '@mui/material/ButtonBase';
 import ClickAwayListener from '@mui/material/ClickAwayListener';
-import MenuList from '@mui/material/MenuList';
-import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
+import Fade from '@mui/material/Fade';
 import MenuItem from '@mui/material/MenuItem';
-import Button from '@mui/material/Button';
-
-// Styled component for badge content
-const BadgeContentSpan = styled('span')({
-  width: 8,
-  height: 8,
-  borderRadius: '50%',
-  cursor: 'pointer',
-  backgroundColor: 'var(--mui-palette-success-main)',
-  boxShadow: '0 0 0 2px var(--mui-palette-background-paper)',
-});
+import MenuList from '@mui/material/MenuList';
+import Paper from '@mui/material/Paper';
+import Popper from '@mui/material/Popper';
+import Typography from '@mui/material/Typography';
 
 const UserDropdown = () => {
-  // States
   const [open, setOpen] = useState(false);
-  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
-
-  // Refs
-  const anchorRef = useRef<HTMLDivElement>(null);
-
-  // Hooks
+  const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
 
-  const handleDropdownOpen = () => {
-    setAnchorEl(anchorRef.current);
-    !open ? setOpen(true) : setOpen(false);
-  };
-
-  const handleDropdownClose = (event?: MouseEvent<HTMLLIElement> | (MouseEvent | TouchEvent), url?: string) => {
-    if (url) {
-      router.push(url);
-    }
-
-    if (anchorRef.current && anchorRef.current.contains(event?.target as HTMLElement)) {
-      return;
-    }
-
+  const closeMenu = () => {
     setOpen(false);
+    anchorRef.current?.focus();
   };
 
   return (
     <>
-      <Badge
+      <ButtonBase
         ref={anchorRef}
-        overlap='circular'
-        badgeContent={<BadgeContentSpan onClick={handleDropdownOpen} />}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        className='mis-2'
+        aria-label='Menú de usuario'
+        aria-haspopup='menu'
+        aria-expanded={open}
+        aria-controls={open ? 'user-menu' : undefined}
+        onClick={(event) => {
+          setAnchorEl(event.currentTarget);
+          setOpen((value) => !value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setAnchorEl(event.currentTarget);
+            setOpen(true);
+          }
+        }}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+          p: 1,
+          borderRadius: 2.5,
+          '&:hover': { bgcolor: 'primary.lighterOpacity' },
+          '&:focus-visible': { outline: '2px solid var(--mui-palette-primary-main)', outlineOffset: 2 },
+        }}
       >
-        <Avatar
-          ref={anchorRef}
-          alt='John Doe'
-          src='/images/avatars/1.png'
-          onClick={handleDropdownOpen}
-          className='cursor-pointer bs-[38px] is-[38px]'
-        />
-      </Badge>
+        <Avatar sx={{ width: 40, height: 40, bgcolor: 'primary.lighterOpacity', color: 'primary.main' }}>
+          <i aria-hidden='true' className='ri-user-line' />
+        </Avatar>
+        <Typography
+          sx={{ display: { xs: 'none', md: 'block' }, fontWeight: 600, color: 'text.primary', fontSize: '0.875rem' }}
+        >
+          Mi cuenta
+        </Typography>
+        <i aria-hidden='true' className={open ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} />
+      </ButtonBase>
       <Popper
         open={open}
         transition
-        disablePortal
         placement='bottom-end'
         anchorEl={anchorEl}
-        className='min-is-[240px] !mbs-4 z-[1]'
+        modifiers={[{ name: 'offset', options: { offset: [0, 12] } }]}
+        sx={{ zIndex: (theme) => theme.zIndex.modal }}
       >
-        {({ TransitionProps, placement }) => (
-          <Fade
-            {...TransitionProps}
-            style={{
-              transformOrigin: placement === 'bottom-end' ? 'right top' : 'left top',
-            }}
-          >
-            <Paper className='shadow-lg'>
-              <ClickAwayListener onClickAway={(e) => handleDropdownClose(e as MouseEvent | TouchEvent)}>
-                <MenuList>
-                  <div className='flex items-center plb-2 pli-4 gap-2' tabIndex={-1}>
-                    <Avatar alt='John Doe' src='/images/avatars/1.png' />
-                    <div className='flex items-start flex-col'>
-                      <Typography className='font-medium' color='text.primary'>
-                        John Doe
-                      </Typography>
-                      <Typography variant='caption'>Admin</Typography>
-                    </div>
-                  </div>
-                  <Divider className='mlb-1' />
-                  <MenuItem className='gap-3' onClick={(e) => handleDropdownClose(e)}>
-                    <i className='ri-user-3-line' />
-                    <Typography color='text.primary'>Mi perfil</Typography>
-                  </MenuItem>
-                  <MenuItem className='gap-3' onClick={(e) => handleDropdownClose(e)}>
-                    <i className='ri-settings-4-line' />
-                    <Typography color='text.primary'>Opciones</Typography>
-                  </MenuItem>
-                  <div className='flex items-center plb-2 pli-4'>
-                    <Button
-                      fullWidth
-                      variant='contained'
-                      color='error'
-                      size='small'
-                      endIcon={<i className='ri-logout-box-r-line' />}
-                      onClick={(e) => handleDropdownClose(e, '/login')}
-                      sx={{ '& .MuiButton-endIcon': { marginInlineStart: 1.5 } }}
+        {({ TransitionProps }) => (
+          <Fade {...TransitionProps}>
+            <Paper
+              sx={{
+                width: 300,
+                maxWidth: 'calc(100vw - 24px)',
+                borderRadius: 3,
+                border: '1px solid var(--mui-palette-primary-lightOpacity)',
+                boxShadow: '0 12px 40px var(--mui-palette-primary-lightOpacity)',
+                overflow: 'hidden',
+              }}
+            >
+              <ClickAwayListener
+                onClickAway={(event) => {
+                  if (!anchorRef.current?.contains(event.target as Node)) setOpen(false);
+                }}
+              >
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, p: 5 }}>
+                    <Avatar sx={{ width: 48, height: 48, bgcolor: 'primary.lighterOpacity', color: 'primary.main' }}>
+                      <i aria-hidden='true' className='ri-user-line' />
+                    </Avatar>
+                    <Typography sx={{ fontWeight: 600, color: 'text.primary' }}>Mi cuenta</Typography>
+                  </Box>
+                  <Divider sx={{ mx: 4 }} />
+                  <MenuList
+                    id='user-menu'
+                    autoFocusItem={open}
+                    aria-label='Opciones de usuario'
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape' || event.key === 'Tab') {
+                        event.preventDefault();
+                        closeMenu();
+                      }
+                    }}
+                    sx={{ p: 3 }}
+                  >
+                    <MenuItem
+                      onClick={() => {
+                        setOpen(false);
+                        router.push('/login');
+                      }}
+                      sx={{
+                        gap: 3,
+                        minHeight: 48,
+                        borderRadius: 2,
+                        color: 'error.main',
+                        bgcolor: 'error.lighterOpacity',
+                        '&:hover, &.Mui-focusVisible': { bgcolor: 'error.lightOpacity' },
+                      }}
                     >
-                      Cerrar sesión
-                    </Button>
-                  </div>
-                </MenuList>
+                      <i aria-hidden='true' className='ri-logout-box-r-line' />
+                      <Typography sx={{ color: 'inherit', fontSize: '0.875rem', fontWeight: 500 }}>
+                        Cerrar sesión
+                      </Typography>
+                    </MenuItem>
+                  </MenuList>
+                </Box>
               </ClickAwayListener>
             </Paper>
           </Fade>

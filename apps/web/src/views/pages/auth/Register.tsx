@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 import Link from 'next/link';
 
 import Box from '@mui/material/Box';
@@ -7,20 +9,24 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
-
+import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
-
+import Checkbox from '@mui/material/Checkbox';
 import Button from '@mui/material/Button';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Divider from '@mui/material/Divider';
 
 import type { Mode } from '@core/types';
 import Logo from '@components/layout/shared/Logo';
 
-import MissionCarousel from '@/views/pages/auth/MissionCarousel';
-import Form from '@components/Form';
-import DirectionalIcon from '@components/DirectionalIcon';
+import MissionCarousel from './MissionCarousel';
 import ModeDropdown from '@/components/layout/shared/ModeDropdown';
 
-const ForgotPassword = ({ mode }: { mode: Mode }) => {
+const Register = ({ mode }: { mode: Mode }) => {
+  const [isPasswordShown, setIsPasswordShown] = useState(false);
+
+  const handleClickShowPassword = () => setIsPasswordShown((show) => !show);
+
   return (
     <Box
       component='main'
@@ -118,16 +124,16 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
                   color: mode === 'dark' ? 'text.primary' : 'primary.dark',
                 }}
               >
-                ¿Olvidaste tu contraseña? 🔐
+                Crear cuenta
               </Typography>
               <Typography sx={{ mt: 2, color: 'text.secondary', lineHeight: 1.6 }}>
-                Ingresa tu correo electrónico y te enviaremos instrucciones para reiniciar tu contraseña.
+                Regístrate para poder agendar tus citas y acceder a nuestros servicios médicos.
               </Typography>
             </Box>
             <Box
-              component={Form}
+              component='form'
               noValidate
-
+              onSubmit={(e) => e.preventDefault()}
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -139,7 +145,25 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
               <TextField
                 autoFocus
                 fullWidth
-                id='forgot-password-email'
+                id='register-username'
+                name='username'
+                autoComplete='username'
+                label='Nombre de usuario'
+                placeholder='Nombre de usuario'
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position='start'>
+                        <i aria-hidden='true' className='ri-user-line' />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+              <TextField
+                fullWidth
+                id='register-email'
                 name='email'
                 type='email'
                 autoComplete='email'
@@ -154,36 +178,95 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
                   ),
                 }}
               />
+              <TextField
+                fullWidth
+                label='Contraseña'
+                id='register-password'
+                name='password'
+                autoComplete='new-password'
+                placeholder='Ingresa tu contraseña'
+                InputLabelProps={{ shrink: true }}
+                type={isPasswordShown ? 'text' : 'password'}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position='start'>
+                      <i aria-hidden='true' className='ri-lock-line' />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position='end'>
+                      <IconButton
+                        type='button'
+                        edge='end'
+                        aria-label={isPasswordShown ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                        aria-pressed={isPasswordShown}
+                        onClick={handleClickShowPassword}
+                        onMouseDown={(e) => e.preventDefault()}
+                        sx={{ width: 44, height: 44 }}
+                      >
+                        <i aria-hidden='true' className={isPasswordShown ? 'ri-eye-off-line' : 'ri-eye-line'} />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <FormControlLabel
+                control={<Checkbox name='terms' />}
+                sx={{ mr: 0, '& .MuiTypography-root': { fontSize: '0.875rem' } }}
+                label={
+                  <>
+                    <span>Acepto los </span>
+                    <Link className='text-primary' href='/' onClick={(e) => e.preventDefault()}>
+                      términos y condiciones
+                    </Link>
+                  </>
+                }
+              />
               <Button
                 fullWidth
                 variant='contained'
                 type='submit'
                 disableElevation
-
+                endIcon={<i aria-hidden='true' className='ri-arrow-right-line' />}
                 sx={{ minHeight: 52, borderRadius: 2.5, fontSize: '1rem' }}
               >
-                Enviar enlace para reiniciar
+                Registrarse
               </Button>
-              <Typography
-                component={Link}
-                href='/login'
-                color='primary'
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 1,
-                  minHeight: 44,
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  textAlign: 'center',
-                }}
-              >
-                <Box component='span' aria-hidden='true' sx={{ display: 'inline-flex' }}>
-                  <DirectionalIcon ltrIconClass='ri-arrow-left-s-line' rtlIconClass='ri-arrow-right-s-line' />
-                </Box>
-                Volver a inicio de sesión
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5, textAlign: 'center' }}>
+                <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>¿Ya tienes una cuenta?</Typography>
+                <Typography
+                  component={Link}
+                  href='/login'
+                  color='primary'
+                  sx={{ fontSize: '0.875rem', fontWeight: 600 }}
+                >
+                  Iniciar sesión
+                </Typography>
+              </Box>
+              <Divider sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>o regístrate con</Divider>
+              <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3 }}>
+                {[
+                  { name: 'Google', icon: 'ri-google-fill', color: 'text-secondary' },
+                  { name: 'Facebook', icon: 'ri-facebook-fill', color: 'text-facebook' },
+                ].map((provider) => (
+                  <IconButton
+                    key={provider.name}
+                    type='button'
+                    aria-label={`Registrarse con ${provider.name}`}
+                    className={provider.color}
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 2.5,
+                      '&:hover': { bgcolor: 'primary.lighterOpacity' },
+                    }}
+                  >
+                    <i aria-hidden='true' className={provider.icon} />
+                  </IconButton>
+                ))}
+              </Box>
             </Box>
           </CardContent>
         </Card>
@@ -216,7 +299,7 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
                 color: 'primary.main',
               }}
             >
-              <i className='ri-mail-open-line' style={{ fontSize: 120 }} />
+              <i className='ri-add-line' style={{ fontSize: 140 }} />
             </Box>
             <Box
               sx={{
@@ -234,7 +317,7 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
                 color: 'secondary.main',
               }}
             >
-              <i className='ri-lock-line' style={{ fontSize: 48 }} />
+              <i className='ri-heart-pulse-line' style={{ fontSize: 48 }} />
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Box sx={{ width: 56, height: 5, borderRadius: 2, bgcolor: 'primary.lightOpacity' }} />
                 <Box sx={{ width: 40, height: 5, borderRadius: 2, bgcolor: 'primary.lightOpacity' }} />
@@ -255,4 +338,4 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
   );
 };
 
-export default ForgotPassword;
+export default Register;

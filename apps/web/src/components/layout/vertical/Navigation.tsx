@@ -8,6 +8,7 @@ import Link from 'next/link';
 
 // MUI Imports
 import { styled, useTheme } from '@mui/material/styles';
+import IconButton from '@mui/material/IconButton';
 
 // Component Imports
 import VerticalNav, { NavHeader } from '@menu/vertical-menu';
@@ -30,7 +31,7 @@ const StyledBoxForShadow = styled('div')(({ theme }) => ({
   width: 'calc(100% + 15px)',
   height: theme.mixins.toolbar.minHeight,
   transition: 'opacity .15s ease-in-out',
-  background: `linear-gradient(var(--mui-palette-background-default) 5%, rgb(var(--mui-palette-background-defaultChannel) / 0.85) 30%, rgb(var(--mui-palette-background-defaultChannel) / 0.5) 65%, rgb(var(--mui-palette-background-defaultChannel) / 0.3) 75%, transparent)`,
+  background: `linear-gradient(var(--mui-palette-background-paper) 5%, rgb(var(--mui-palette-background-paperChannel) / 0.85) 30%, rgb(var(--mui-palette-background-paperChannel) / 0.5) 65%, rgb(var(--mui-palette-background-paperChannel) / 0.3) 75%, transparent)`,
   '&.scrolled': {
     opacity: 1,
   },
@@ -64,10 +65,22 @@ const Navigation = () => {
     <VerticalNav customStyles={navigationCustomStyles(theme)}>
       {/* Nav Header including Logo & nav toggle icons  */}
       <NavHeader>
-        <Link href='/dashboard'>
+        <Link href='/dashboard' aria-label='MEDISUR, inicio'>
           <Logo />
         </Link>
-        {isBreakpointReached && <i className='ri-close-line text-xl' onClick={() => toggleVerticalNav(false)} />}
+        <IconButton
+          aria-label={isBreakpointReached ? 'Cerrar navegación' : 'Ocultar navegación'}
+          onClick={() => toggleVerticalNav(isBreakpointReached ? false : undefined)}
+          sx={{
+            width: 36,
+            height: 36,
+            borderRadius: 2,
+            color: 'text.secondary',
+            '&:hover': { bgcolor: 'primary.lighterOpacity', color: 'primary.main' },
+          }}
+        >
+          <i aria-hidden='true' className={isBreakpointReached ? 'ri-close-line' : 'ri-arrow-left-double-line'} />
+        </IconButton>
       </NavHeader>
       <StyledBoxForShadow ref={shadowRef} />
       <VerticalMenu scrollMenu={scrollMenu} />
