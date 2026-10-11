@@ -32,16 +32,16 @@ const ModeDropdown = () => {
 
   const getModeIcon = () => {
     if (settings.mode === 'dark') {
-      return 'ri-moon-clear-line';
-    } else {
       return 'ri-sun-line';
+    } else {
+      return 'ri-moon-clear-line';
     }
   };
 
   return (
     <>
       <Tooltip
-        title={`Modo ${settings.mode === 'light' ? 'claro' : 'oscuro'}`}
+        title={`Cambiar a modo ${settings.mode === 'light' ? 'oscuro' : 'claro'}`}
         onOpen={() => setTooltipOpen(true)}
         onClose={() => setTooltipOpen(false)}
         open={tooltipOpen}

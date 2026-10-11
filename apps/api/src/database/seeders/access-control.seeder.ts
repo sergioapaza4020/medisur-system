@@ -7,7 +7,7 @@ import {
   MEDISUR_ROLES,
 } from './access-control.catalog';
 
-// Called inside a transaction. Repeated runs preserve existing role assignments.
+// Called inside a transaction. Repeated runs repair administrative grants only.
 export async function seedAccessControl(manager: EntityManager) {
   const permissionRepository = manager.getRepository(Permission);
   const roleRepository = manager.getRepository(Role);
@@ -31,12 +31,27 @@ export async function seedAccessControl(manager: EntityManager) {
         }),
       );
     }
-    permissions.push(permission);
+    // The current catalog contains administrative resources only. Do not grant
+    // custom permissions from the database or reactivate disabled capabilities.
+    if (permission.isActive) permissions.push(permission);
   }
 
   for (const definition of MEDISUR_ROLES) {
-    const existing = await roleRepository.findOne({ where: { name: definition.name } });
-    if (existing) continue;
+    const existing = await roleRepository.findOne({
+      where: { name: definition.name },
+      relations: { permissions: true },
+    });
+    if (existing) {
+      if (definition.name === 'SUPERADMIN') {
+        const assigned = new Set(existing.permissions.map((permission) => permission.name));
+        const missing = permissions.filter((permission) => !assigned.has(permission.name));
+        if (missing.length) {
+          existing.permissions = [...existing.permissions, ...missing];
+          await roleRepository.save(existing);
+        }
+      }
+      continue;
+    }
     await roleRepository.save(
       roleRepository.create({
         ...definition,

@@ -2,6 +2,7 @@ import { ResponseInterceptor } from './response.interceptor';
 import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import { firstValueFrom, of } from 'rxjs';
 import { User } from 'src/entities/users/users.entity';
+import { UserSession } from 'src/entities/user-sessions/user-sessions.entity';
 
 function responseFor(data: unknown) {
   return firstValueFrom(
@@ -86,5 +87,26 @@ describe('ResponseInterceptor', () => {
     });
     expect(entity.password).toBe('hash');
     expect(JSON.stringify(result)).not.toContain('password');
+  });
+
+  it('excludes stored refresh hashes from sessions and nested users while preserving issued login tokens', async () => {
+    const user = Object.assign(new User(), { idUser: 1, password: 'password-hash' });
+    const session = Object.assign(new UserSession(), {
+      idSession: 2,
+      refreshToken: 'refresh-hash',
+      user,
+    });
+    // Session responses and user responses can both contain sensitive entity fields.
+    const sessionResult = await responseFor([session]);
+    expect(JSON.stringify(sessionResult)).not.toContain('refresh-hash');
+    expect(JSON.stringify(sessionResult)).not.toContain('password-hash');
+    expect(session.refreshToken).toBe('refresh-hash');
+    const nested = Object.assign(new User(), { idUser: 1, sessions: [session] });
+    expect(JSON.stringify(await responseFor(nested))).not.toContain('refresh-hash');
+    expect(
+      await responseFor({ accessToken: 'issued-access', refreshToken: 'issued-refresh' }),
+    ).toMatchObject({
+      data: { accessToken: 'issued-access', refreshToken: 'issued-refresh' },
+    });
   });
 });

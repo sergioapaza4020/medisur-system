@@ -3,6 +3,10 @@ import { Permission } from 'src/entities/permissions/permissions.entity';
 import { Role } from 'src/entities/roles/roles.entity';
 import { seedAccessControl } from './access-control.seeder';
 import { MEDISUR_PERMISSION_NAMES, MEDISUR_ROLES } from './access-control.catalog';
+import { Reflector } from '@nestjs/core';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
+import { PermissionsGuard } from '@core/guards/permissions/permissions.guard';
+import { UsersController } from 'src/controllers/users/users.controller';
 
 function repository<T extends { name: string }>() {
   const records: T[] = [];
@@ -40,11 +44,18 @@ describe('MEDISUR access seed', () => {
     expect(academic.isActive).toBe(false);
     const admin = roles.records.find((r) => r.name === 'SUPERADMIN')!;
     expect(admin.permissions.map((p) => p.name)).toEqual(MEDISUR_PERMISSION_NAMES);
+    expect(admin.permissions).not.toContain(custom);
+    const context = new ExecutionContextHost(
+      [{ user: { roles: [admin.name], permissions: admin.permissions.map((p) => p.name) } }],
+      UsersController,
+      Object.getOwnPropertyDescriptor(UsersController.prototype, 'getAll')!.value as () => void,
+    );
+    expect(new PermissionsGuard(new Reflector()).canActivate(context)).toBe(true);
     for (const role of roles.records.filter((r) => r.name !== 'SUPERADMIN')) {
       expect(role.permissions).toEqual([]);
     }
 
-    // Re-running cannot silently restore capabilities revoked by an administrator.
+    // Re-running repairs missing grants without reactivating disabled permissions.
     admin.permissions = [];
     const staff = roles.records.find((r) => r.name === 'STAFF')!;
     staff.permissions = [custom];
@@ -52,8 +63,44 @@ describe('MEDISUR access seed', () => {
     await seedAccessControl(manager);
     expect(roles.records).toHaveLength(4);
     expect(permissions.records).toHaveLength(MEDISUR_PERMISSION_NAMES.length + 2);
-    expect(admin.permissions).toEqual([]);
+    expect(admin.permissions.map((p) => p.name)).toEqual(
+      MEDISUR_PERMISSION_NAMES.filter((name) => name !== 'role.update'),
+    );
     expect(staff.permissions).toEqual([custom]);
     expect(permissions.records.find((p) => p.name === 'role.update')!.isActive).toBe(false);
+    const saves = roles.save.mock.calls.length;
+    await seedAccessControl(manager);
+    expect(roles.save).toHaveBeenCalledTimes(saves);
+    expect(new Set(admin.permissions.map((p) => p.name)).size).toBe(admin.permissions.length);
+  });
+
+  it('repairs an existing SUPERADMIN and preserves explicit custom grants and role status', async () => {
+    const permissions = repository<Permission>();
+    const roles = repository<Role>();
+    const custom = { name: 'custom.read', isActive: true } as Permission;
+    permissions.records.push(custom);
+    const admin = {
+      name: 'SUPERADMIN',
+      isActive: false,
+      permissions: [custom],
+    } as Role;
+    roles.records.push(admin);
+    const manager = {
+      getRepository: (entity: unknown) => (entity === Permission ? permissions : roles),
+    } as unknown as EntityManager;
+
+    await seedAccessControl(manager);
+    await seedAccessControl(manager);
+
+    expect(admin.permissions.map((p) => p.name)).toEqual([
+      'custom.read',
+      ...MEDISUR_PERMISSION_NAMES,
+    ]);
+    expect(admin.isActive).toBe(false);
+    expect(roles.records.filter((role) => role.name === 'SUPERADMIN')).toHaveLength(1);
+    expect(roles.findOne).toHaveBeenCalledWith({
+      where: { name: 'SUPERADMIN' },
+      relations: { permissions: true },
+    });
   });
 });

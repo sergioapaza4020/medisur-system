@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { User } from '../users/users.entity';
 import { SessionRevokeReasons } from '@common/enums/sessionRevokeReasons';
+import { Exclude } from 'class-transformer';
 
 @Entity('user_sessions')
 export class UserSession {
@@ -18,6 +19,7 @@ export class UserSession {
   @JoinColumn({ name: 'id_user' })
   user: User;
 
+  @Exclude({ toPlainOnly: true })
   @Column({ name: 'refresh_token' })
   refreshToken: string;
 

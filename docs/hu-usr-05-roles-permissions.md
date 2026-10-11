@@ -42,8 +42,9 @@ delete conservan la desactivación lógica existente.
 
 Los roles son agrupaciones, nunca bypasses. Un rol personalizado puede compartir
 permisos con cualquier otro. SUPERADMIN no otorga capacidades implícitas ni acceso
-clínico. El seed conserva roles personalizados y no reasigna ni reactiva capacidades
-existentes en ejecuciones posteriores.
+clínico. El seed conserva roles personalizados y las asignaciones existentes. En cada
+ejecución agrega a SUPERADMIN los permisos activos del catálogo que falten, incluso
+si el rol ya existe. No reactiva roles ni permisos desactivados.
 
 Para datos provenientes del dominio anterior, el seed desactiva permisos de los
 namespaces académicos explícitos career, course, subject, enrollment y academic,
@@ -62,9 +63,17 @@ pnpm --filter medisur-system-backend seed
 
 El seed ejecuta toda la configuración en una transacción. Se puede repetir sin duplicar
 roles, permisos o asociaciones. Los permisos desactivados por el administrador y las
-asignaciones existentes se preservan. En una base ya configurada, revisar los permisos
-explícitos de SUPERADMIN antes de retirar el bypass de la versión anterior: el seed no
-restaura asignaciones a un rol ya existente.
+asignaciones existentes se preservan. En una base ya configurada, el seed repara las
+asignaciones administrativas faltantes de SUPERADMIN. Una revocación individual de
+un permiso activo del catálogo se restaura al ejecutar el seed explícitamente.
+
+La fuente de asignación es MEDISUR_PERMISSION_NAMES, que actualmente contiene solo
+los 27 permisos administrativos de user, role, permission y session. Los permisos
+personalizados de la base no se asignan automáticamente. Actualmente no existe una
+distinción ni un catálogo de permisos clínicos; al incorporar esos dominios será
+necesario definir su clasificación y exclusiones antes de ampliar este seed. Las
+asignaciones personalizadas previas tampoco se revocan: el seed no constituye una
+auditoría de accesos clínicos otorgados manualmente.
 
 No se crean cuentas ni contraseñas predeterminadas. El operador debe provisionar una
 cuenta inicial mediante el mecanismo de instalación y asociarla al rol SUPERADMIN.
