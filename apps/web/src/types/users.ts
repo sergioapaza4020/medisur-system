@@ -1,4 +1,4 @@
-import type { ApiResponse } from './auth';
+import type { PaginatedResponse, PaginationQuery } from './pagination';
 
 export interface AdministrativeUser {
   idUser: number;
@@ -14,12 +14,8 @@ export interface AdministrativeUser {
 export type UserFields = Pick<AdministrativeUser, 'username' | 'email' | 'name' | 'lastname' | 'ci'>;
 export type CreateUser = UserFields & { password: string; roleNames: string[] };
 export type UpdateUser = Partial<UserFields>;
-export interface UsersQuery {
-  page: number;
-  limit: number;
+export interface UsersQuery extends PaginationQuery {
   status: 'active' | 'inactive' | 'all';
   search?: string;
 }
-export interface UsersPage extends ApiResponse<AdministrativeUser[]> {
-  meta: { page: number; limit: number; total: number; totalPages: number };
-}
+export type UsersPage = PaginatedResponse<AdministrativeUser>;

@@ -6,6 +6,7 @@ import { User } from 'src/entities/users/users.entity';
 import { Repository } from 'typeorm';
 import { UsersQueryDto } from 'src/dtos/users/users-query.dto';
 import { statusFilter } from 'src/common/utils/status-filter';
+import { paginate } from 'src/common/utils/paginate';
 
 import * as bcrypt from 'bcrypt';
 
@@ -38,17 +39,7 @@ export class UsersService {
         { search: `%${query.search.trim().replace(/[\\%_]/g, '\\$&')}%` },
       );
     }
-    qb.skip((query.page - 1) * query.limit).take(query.limit);
-    const [data, total] = await qb.getManyAndCount();
-    return {
-      data,
-      meta: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        totalPages: Math.ceil(total / query.limit),
-      },
-    };
+    return paginate(qb, query);
   }
 
   async create(userCreateDto: UserCreateDto, authorId: number): Promise<User> {
