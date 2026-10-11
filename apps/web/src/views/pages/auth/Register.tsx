@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -11,19 +13,72 @@ import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
-import Checkbox from '@mui/material/Checkbox';
 import Button from '@mui/material/Button';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Divider from '@mui/material/Divider';
+import Alert from '@mui/material/Alert';
+import LinearProgress from '@mui/material/LinearProgress';
+import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
+import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked';
 
 import type { Mode } from '@core/types';
 import Logo from '@components/layout/shared/Logo';
 
 import MissionCarousel from './MissionCarousel';
 import ModeDropdown from '@/components/layout/shared/ModeDropdown';
+import { authService } from '@/services/auth/authService';
+import type { PatientRegistration } from '@/types/auth';
+import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
+import {
+  emptyPatientRegistration,
+  getRegistrationPasswordFeedback,
+  validatePatientRegistration,
+} from '@/utils/patientRegistration';
+import { saveRegistrationNotice } from '@/utils/registrationNotice';
 
 const Register = ({ mode }: { mode: Mode }) => {
   const [isPasswordShown, setIsPasswordShown] = useState(false);
+  const [form, setForm] = useState<PatientRegistration>(emptyPatientRegistration);
+  const [errors, setErrors] = useState<Partial<Record<keyof PatientRegistration, string>>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const submitInFlight = useRef(false);
+  const router = useRouter();
+  const passwordFeedback = getRegistrationPasswordFeedback(form.password);
+
+  function change(field: keyof PatientRegistration, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: undefined }));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitInFlight.current || success) return;
+    const validation = validatePatientRegistration(form);
+    setErrors(validation);
+    if (Object.keys(validation).length) return;
+    submitInFlight.current = true;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await authService.register({
+        name: form.name.trim(),
+        lastname: form.lastname.trim(),
+        email: form.email.trim().toLowerCase(),
+        ci: form.ci.trim(),
+        password: form.password,
+      });
+      setForm(emptyPatientRegistration);
+      setSuccess(true);
+      saveRegistrationNotice(form.email);
+      router.replace('/login');
+    } catch (failure) {
+      setError(getApiErrorMessage(failure));
+      setForm((current) => ({ ...current, password: '' }));
+      submitInFlight.current = false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   const handleClickShowPassword = () => setIsPasswordShown((show) => !show);
 
@@ -124,7 +179,7 @@ const Register = ({ mode }: { mode: Mode }) => {
                   color: mode === 'dark' ? 'text.primary' : 'primary.dark',
                 }}
               >
-                Crear cuenta
+                Crear cuenta de paciente
               </Typography>
               <Typography sx={{ mt: 2, color: 'text.secondary', lineHeight: 1.6 }}>
                 Regístrate para poder agendar tus citas y acceder a nuestros servicios médicos.
@@ -133,7 +188,7 @@ const Register = ({ mode }: { mode: Mode }) => {
             <Box
               component='form'
               noValidate
-              onSubmit={(e) => e.preventDefault()}
+              onSubmit={handleSubmit}
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -142,29 +197,40 @@ const Register = ({ mode }: { mode: Mode }) => {
                 '& .MuiInputLabel-root:not(.Mui-focused):not(.Mui-error)': { color: 'text.secondary' },
               }}
             >
-              <TextField
-                autoFocus
-                fullWidth
-                id='register-username'
-                name='username'
-                autoComplete='username'
-                label='Nombre de usuario'
-                placeholder='Nombre de usuario'
-                slotProps={{
-                  inputLabel: { shrink: true },
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position='start'>
-                        <i aria-hidden='true' className='ri-user-line' />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
+              {error && (
+                <Alert severity='error' sx={{ whiteSpace: 'pre-line' }}>
+                  {error}
+                </Alert>
+              )}
+              {success && <Alert severity='success'>Tu cuenta de paciente fue creada. Ya puedes iniciar sesión.</Alert>}
+              {(['name', 'lastname', 'ci'] as const).map((field) => (
+                <TextField
+                  key={field}
+                  fullWidth
+                  required
+                  name={field}
+                  id={`register-${field}`}
+                  label={{ name: 'Nombres', lastname: 'Apellidos', ci: 'Documento de identidad' }[field]}
+                  autoComplete={{ name: 'given-name', lastname: 'family-name', ci: 'off' }[field]}
+                  value={form[field]}
+                  onChange={(event) => change(field, event.target.value)}
+                  disabled={isSubmitting || success}
+                  error={Boolean(errors[field])}
+                  helperText={errors[field]}
+                  inputProps={{ maxLength: field === 'ci' ? 30 : 100 }}
+                />
+              ))}
               <TextField
                 fullWidth
                 id='register-email'
                 name='email'
+                required
+                value={form.email}
+                onChange={(event) => change('email', event.target.value)}
+                disabled={isSubmitting || success}
+                error={Boolean(errors.email)}
+                helperText={errors.email}
+                inputProps={{ maxLength: 254 }}
                 type='email'
                 autoComplete='email'
                 label='Correo electrónico'
@@ -183,6 +249,15 @@ const Register = ({ mode }: { mode: Mode }) => {
                 label='Contraseña'
                 id='register-password'
                 name='password'
+                required
+                value={form.password}
+                onChange={(event) => change('password', event.target.value)}
+                disabled={isSubmitting || success}
+                error={Boolean(errors.password)}
+                helperText={errors.password}
+                inputProps={{
+                  'aria-describedby': `register-password-requirements${errors.password ? ' register-password-helper-text' : ''}`,
+                }}
                 autoComplete='new-password'
                 placeholder='Ingresa tu contraseña'
                 InputLabelProps={{ shrink: true }}
@@ -210,27 +285,76 @@ const Register = ({ mode }: { mode: Mode }) => {
                   ),
                 }}
               />
-              <FormControlLabel
-                control={<Checkbox name='terms' />}
-                sx={{ mr: 0, '& .MuiTypography-root': { fontSize: '0.875rem' } }}
-                label={
-                  <>
-                    <span>Acepto los </span>
-                    <Link className='text-primary' href='/' onClick={(e) => e.preventDefault()}>
-                      términos y condiciones
-                    </Link>
-                  </>
-                }
-              />
+              <Box id='register-password-requirements' sx={{ mt: -3, minWidth: 0 }}>
+                <Typography variant='body2' sx={{ mb: 1 }}>
+                  La contraseña debe cumplir:
+                </Typography>
+                <Box
+                  component='ul'
+                  sx={{
+                    m: 0,
+                    p: 0,
+                    listStyle: 'none',
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                    gap: 1,
+                  }}
+                >
+                  {passwordFeedback.requirements.map((requirement) => {
+                    const met = Boolean(form.password) && requirement.met;
+                    const StatusIcon = met ? CheckCircleOutline : RadioButtonUnchecked;
+                    return (
+                      <Box
+                        component='li'
+                        key={requirement.id}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          color: met ? 'success.main' : 'text.secondary',
+                          minWidth: 0,
+                        }}
+                      >
+                        <StatusIcon fontSize='small' aria-hidden='true' />
+                        <Typography variant='caption'>
+                          <span>{met ? 'Cumplido' : 'Pendiente'}: </span>
+                          {requirement.label}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                </Box>
+                <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mt: 1 }}>
+                  La longitud máxima depende de los caracteres utilizados; los acentos y emojis pueden reducirla. Los
+                  símbolos son opcionales.
+                </Typography>
+                <Typography id='register-password-strength' variant='body2' sx={{ mt: 2 }} aria-live='polite'>
+                  Fortaleza: {passwordFeedback.strength}
+                </Typography>
+                <LinearProgress
+                  variant='determinate'
+                  value={passwordFeedback.progress}
+                  aria-labelledby='register-password-strength'
+                  color={
+                    passwordFeedback.strength === 'Fuerte'
+                      ? 'success'
+                      : passwordFeedback.strength === 'Media'
+                        ? 'primary'
+                        : 'inherit'
+                  }
+                  sx={{ mt: 1, borderRadius: 1 }}
+                />
+              </Box>
               <Button
                 fullWidth
                 variant='contained'
                 type='submit'
+                disabled={isSubmitting || success}
                 disableElevation
                 endIcon={<i aria-hidden='true' className='ri-arrow-right-line' />}
                 sx={{ minHeight: 52, borderRadius: 2.5, fontSize: '1rem' }}
               >
-                Registrarse
+                {isSubmitting ? 'Registrando…' : 'Registrarse'}
               </Button>
               <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 1.5, textAlign: 'center' }}>
                 <Typography sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>¿Ya tienes una cuenta?</Typography>
@@ -242,30 +366,6 @@ const Register = ({ mode }: { mode: Mode }) => {
                 >
                   Iniciar sesión
                 </Typography>
-              </Box>
-              <Divider sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>o regístrate con</Divider>
-              <Box sx={{ display: 'flex', justifyContent: 'center', gap: 3 }}>
-                {[
-                  { name: 'Google', icon: 'ri-google-fill', color: 'text-secondary' },
-                  { name: 'Facebook', icon: 'ri-facebook-fill', color: 'text-facebook' },
-                ].map((provider) => (
-                  <IconButton
-                    key={provider.name}
-                    type='button'
-                    aria-label={`Registrarse con ${provider.name}`}
-                    className={provider.color}
-                    sx={{
-                      width: 48,
-                      height: 48,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 2.5,
-                      '&:hover': { bgcolor: 'primary.lighterOpacity' },
-                    }}
-                  >
-                    <i aria-hidden='true' className={provider.icon} />
-                  </IconButton>
-                ))}
               </Box>
             </Box>
           </CardContent>

@@ -1,4 +1,10 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { RegisterPatientDto } from 'src/dtos/auth/register-patient.dto';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from 'src/dtos/auth/login.dto';
@@ -19,10 +25,36 @@ export class AuthService {
     private readonly sessionService: SessionsService,
   ) {}
 
-  async validateUser(loginDto: LoginDto): Promise<User> {
-    const { username, password } = loginDto;
+  async register(dto: RegisterPatientDto) {
+    try {
+      const user = await this.userService.create({
+        name: dto.name,
+        lastname: dto.lastname,
+        email: dto.email,
+        ci: dto.ci,
+        password: dto.password,
+        roleNames: ['PATIENT'],
+      });
+      return { idUser: user.idUser, email: user.email };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        if (error.message === 'User already exists')
+          throw new BadRequestException(
+            'Ya existe una cuenta con ese correo electrónico o documento',
+          );
+        if (error.message === 'Role not found: PATIENT')
+          throw new ServiceUnavailableException(
+            'El registro de pacientes no está disponible temporalmente',
+          );
+      }
+      throw error;
+    }
+  }
 
-    const user = await this.userService.getForAuthentication(username);
+  async validateUser(loginDto: LoginDto): Promise<User> {
+    const { email, password } = loginDto;
+
+    const user = await this.userService.getForAuthentication(email);
     if (!user?.isActive) throw new UnauthorizedException('Credenciales inválidas');
 
     const checkPassword = await bcrypt.compare(password, user.password);
@@ -99,7 +131,6 @@ export class AuthService {
       idUser: user.idUser,
       idSession,
       name: user.name,
-      username: user.username,
       email: user.email,
       roles,
       permissions,

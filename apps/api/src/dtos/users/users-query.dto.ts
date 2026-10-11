@@ -4,7 +4,7 @@ import { StatusQueryDto } from '../common/status-query.dto';
 import { PaginationQueryDto } from '../common/pagination-query.dto';
 
 export class UsersQueryDto extends IntersectionType(PaginationQueryDto, StatusQueryDto) {
-  @ApiPropertyOptional({ description: 'Nombre, apellido, usuario, correo o documento' })
+  @ApiPropertyOptional({ description: 'Nombre, apellido, correo o documento' })
   @IsOptional()
   @IsString()
   @MaxLength(200)

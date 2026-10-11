@@ -3,7 +3,7 @@
 ## Implementación y reutilización
 
 Se conserva la autenticación existente con NestJS, Passport/JWT, bcrypt, sesiones,
-usuarios, roles y permisos. El login utiliza el nombre de usuario existente; no se
+usuarios, roles y permisos. El login utiliza exclusivamente el correo electrónico normalizado; no se
 introduce otro identificador, proveedor de identidad o mecanismo de autenticación.
 
 En frontend se reutilizan el cliente único services/http/axiosClient.ts, sus opciones

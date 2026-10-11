@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@core/decorators/current-user/current-user.decorator';
 import { Public } from '@core/decorators/public/public.decorator';
 import { LoginDto } from 'src/dtos/auth/login.dto';
+import { RegisterPatientDto } from 'src/dtos/auth/register-patient.dto';
 import { AuthService } from 'src/services/auth/auth.service';
 import { RefreshTokenDto } from 'src/dtos/auth/refresh-token.dto';
 import type { Request } from 'express';
@@ -12,6 +13,15 @@ import type { JwtPayload } from '@common/types/jwt-payload.type';
 @ApiTags('Auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Public()
+  @Post('register')
+  async register(@Body() dto: RegisterPatientDto) {
+    return {
+      message: 'Cuenta de paciente creada correctamente',
+      data: await this.authService.register(dto),
+    };
+  }
 
   @Public()
   @Post('login')

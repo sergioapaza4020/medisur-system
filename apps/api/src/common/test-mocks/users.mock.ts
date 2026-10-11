@@ -1,5 +1,5 @@
 export const mockUsersService = {
-  getOneByUsername: jest.fn(),
+  getForAuthentication: jest.fn(),
 };
 
 export const mockUserRepository = {

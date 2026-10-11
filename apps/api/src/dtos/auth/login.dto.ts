@@ -1,11 +1,15 @@
+import { Transform } from 'class-transformer';
+import { transformEmail } from 'src/common/utils/normalize-email';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, MaxLength, IsNotEmpty, IsString } from 'class-validator';
 
 export class LoginDto {
-  @ApiProperty({ example: 'medisur.usuario', description: 'Nombre de usuario' })
-  @IsString()
+  @ApiProperty({ example: 'usuario@correo.com', description: 'Correo electrónico' })
+  @Transform(transformEmail)
+  @IsEmail()
+  @MaxLength(254)
   @IsNotEmpty()
-  username: string;
+  email: string;
 
   @ApiProperty({ example: 'password', description: 'Password' })
   @IsString()

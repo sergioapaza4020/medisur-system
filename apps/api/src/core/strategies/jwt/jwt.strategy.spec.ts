@@ -10,7 +10,6 @@ describe('JwtStrategy', () => {
       const session: JwtPayload = {
         idUser: 1,
         idSession: 2,
-        username: 'staff',
         email: 'staff@example.com',
         roles: ['STAFF'],
         permissions: [],

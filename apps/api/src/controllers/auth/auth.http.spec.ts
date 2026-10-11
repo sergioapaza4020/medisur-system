@@ -88,8 +88,8 @@ describe('HU-USR-01 authentication over HTTP', () => {
         {
           provide: UsersService,
           useValue: {
-            getForAuthentication: (username: string) =>
-              Promise.resolve(username === user.username ? Object.assign(new User(), user) : null),
+            getForAuthentication: (email: string) =>
+              Promise.resolve(email === user.email ? Object.assign(new User(), user) : null),
             getOneById: (idUser: number) =>
               Promise.resolve(idUser === user.idUser && user.isActive ? user : null),
           },
@@ -112,7 +112,6 @@ describe('HU-USR-01 authentication over HTTP', () => {
     sessions = [];
     user = Object.assign(new User(), {
       idUser: 1,
-      username: 'medisur',
       email: 'medisur@example.com',
       name: 'Ana',
       isActive: true,
@@ -132,7 +131,7 @@ describe('HU-USR-01 authentication over HTTP', () => {
   async function login() {
     const response = await request(server)
       .post('/api/auth/login')
-      .send({ username: 'medisur', password: 'valid-password' })
+      .send({ email: ' MEDISUR@example.com ', password: 'valid-password' })
       .expect(201);
     return (response.body as Envelope<Tokens>).data;
   }
@@ -140,15 +139,19 @@ describe('HU-USR-01 authentication over HTTP', () => {
   it('logs in, identifies the current user, and does not expose password or refresh hashes', async () => {
     const tokens = await login();
     expect(tokens.userSession).toHaveProperty('idSession');
+    const jwt = new JwtService();
+    expect(jwt.decode(tokens.accessToken)).not.toHaveProperty('username');
+    expect(jwt.decode(tokens.refreshToken)).not.toHaveProperty('username');
     expect(JSON.stringify(tokens)).not.toContain('password');
     expect(tokens.userSession).not.toHaveProperty('refreshToken');
     const response = await request(server)
       .get('/api/auth/me')
       .auth(tokens.accessToken, { type: 'bearer' })
       .expect(200);
+    expect((response.body as Envelope<unknown>).data).not.toHaveProperty('username');
     expect((response.body as Envelope<unknown>).data).toMatchObject({
       idUser: 1,
-      username: 'medisur',
+      email: 'medisur@example.com',
       roles: ['STAFF'],
       permissions: [],
     });
@@ -157,16 +160,16 @@ describe('HU-USR-01 authentication over HTTP', () => {
   it('uses the same 401 message for wrong credentials, absent users, and inactive accounts', async () => {
     const wrong = await request(server)
       .post('/api/auth/login')
-      .send({ username: 'medisur', password: 'wrong' })
+      .send({ email: 'medisur@example.com', password: 'wrong' })
       .expect(401);
     const missing = await request(server)
       .post('/api/auth/login')
-      .send({ username: 'absent', password: 'valid-password' })
+      .send({ email: 'absent@example.com', password: 'valid-password' })
       .expect(401);
     user.isActive = false;
     const inactive = await request(server)
       .post('/api/auth/login')
-      .send({ username: 'medisur', password: 'valid-password' })
+      .send({ email: ' MEDISUR@example.com ', password: 'valid-password' })
       .expect(401);
     expect((wrong.body as Envelope<unknown>).message).toBe('Credenciales inválidas');
     expect((missing.body as Envelope<unknown>).message).toBe(
