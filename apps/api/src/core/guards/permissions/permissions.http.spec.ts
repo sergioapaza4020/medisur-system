@@ -18,6 +18,9 @@ import { PermissionsGuard } from './permissions.guard';
 import { createValidationPipe } from '@core/pipes/validation.pipe';
 import { MEDISUR_PERMISSION_NAMES } from 'src/database/seeders/access-control.catalog';
 import { PERMISSIONS_KEY } from '@core/decorators/permissions/permissions.decorator';
+import { Repository } from 'typeorm';
+import { User } from 'src/entities/users/users.entity';
+import { ResponseInterceptor } from '@core/interceptors/response/response.interceptor';
 
 describe('Permission enforcement over HTTP', () => {
   let app: INestApplication;
@@ -35,6 +38,12 @@ describe('Permission enforcement over HTTP', () => {
     create: jest.fn().mockResolvedValue({}),
     update: jest.fn().mockResolvedValue({}),
     assignPermissions: jest.fn().mockResolvedValue({}),
+    getAdministrativeDetail: jest.fn().mockResolvedValue({}),
+    getOneByEmail: jest.fn().mockResolvedValue({}),
+    getOneByUsername: jest.fn().mockResolvedValue({}),
+    delete: jest.fn().mockResolvedValue({}),
+    reactivate: jest.fn().mockResolvedValue({}),
+    assignRoles: jest.fn().mockResolvedValue({}),
   };
 
   beforeAll(async () => {
@@ -57,6 +66,7 @@ describe('Permission enforcement over HTTP', () => {
     }).compile();
     app = module.createNestApplication();
     app.useGlobalPipes(createValidationPipe());
+    app.useGlobalInterceptors(new ResponseInterceptor());
     await app.init();
     server = app.getHttpServer() as Server;
     token = new JwtService().sign(
@@ -146,6 +156,30 @@ describe('Permission enforcement over HTTP', () => {
     await request(server).post('/users').auth(token, { type: 'bearer' }).send(body).expect(201);
   });
 
+  it('rejects creation without roles and rejects roles supplied to the administrative PATCH', async () => {
+    capabilities.permissions = ['user.create', 'user.assign-roles', 'user.update'];
+    await request(server)
+      .post('/users')
+      .auth(token, { type: 'bearer' })
+      .send({
+        name: 'Ana',
+        lastname: 'Pérez',
+        username: 'ana',
+        email: 'ana@example.com',
+        ci: '123',
+        password: 'secret',
+        roleNames: [],
+      })
+      .expect(400);
+    await request(server)
+      .patch('/users/2')
+      .auth(token, { type: 'bearer' })
+      .send({ name: 'Ana', roleNames: [] })
+      .expect(400);
+    expect(service.create).not.toHaveBeenCalled();
+    expect(service.update).not.toHaveBeenCalled();
+  });
+
   it('includes every existing protected controller operation in the initial catalog', () => {
     for (const controller of [
       UsersController,
@@ -167,5 +201,144 @@ describe('Permission enforcement over HTTP', () => {
           expect(MEDISUR_PERMISSION_NAMES).toContain(permission);
       }
     }
+  });
+
+  it.each([
+    ['get', '/users/id/1', 'user.get-one-by-id', {}],
+    ['get', '/users/email/ana@example.com', 'user.get-one-by-email', {}],
+    ['get', '/users/username/ana', 'user.get-one-by-username', {}],
+    ['patch', '/users/1', 'user.update', { name: 'Ana' }],
+    ['delete', '/users/1', 'user.delete', {}],
+    ['patch', '/users/reactivate/1', 'user.reactivate', {}],
+    ['patch', '/users/assign-roles/1', 'user.assign-roles', { roleNames: ['STAFF'] }],
+    ['put', '/users/assign-roles/1', 'user.assign-roles', { roleNames: ['STAFF'] }],
+  ] as const)(
+    'protects direct %s %s with its specific permission',
+    async (method, path, permission, body) => {
+      await request(server)[method](path).send(body).expect(401);
+      await request(server)[method](path).auth(token, { type: 'bearer' }).send(body).expect(403);
+      expect(Object.values(service).every((mock) => mock.mock.calls.length === 0)).toBe(true);
+      capabilities.permissions = [permission];
+      await request(server)[method](path).auth(token, { type: 'bearer' }).send(body).expect(200);
+    },
+  );
+
+  it('validates pagination and user fields before invoking administration', async () => {
+    capabilities.permissions = ['user.get-all', 'user.update'];
+    for (const query of [
+      'page=0',
+      'page=1.5',
+      'limit=101',
+      'limit=-1',
+      'status=invalid',
+      'page=abc',
+    ]) {
+      await request(server).get(`/users?${query}`).auth(token, { type: 'bearer' }).expect(400);
+    }
+    for (const body of [{ name: '   ' }, { ci: null }, { email: 'invalid' }]) {
+      await request(server)
+        .patch('/users/1')
+        .auth(token, { type: 'bearer' })
+        .send(body)
+        .expect(400);
+    }
+    expect(service.getAll).not.toHaveBeenCalled();
+    expect(service.update).not.toHaveBeenCalled();
+    await request(server)
+      .get('/users?page=2&limit=25&status=all&search=Ana')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.getAll).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2, limit: 25, status: 'all', search: 'Ana' }),
+    );
+    await request(server)
+      .patch('/users/1')
+      .auth(token, { type: 'bearer' })
+      .send({ name: 'Ana', isActive: true })
+      .expect(200);
+    expect(service.update).toHaveBeenCalledWith(1, { name: 'Ana' }, 1);
+  });
+
+  it('rejects empty replacements and forwards valid roles with the authenticated author', async () => {
+    capabilities.permissions = ['user.assign-roles'];
+    for (const roleNames of [[], ['STAFF', 'STAFF'], ['   '], [1], null]) {
+      await request(server)
+        .put('/users/assign-roles/2')
+        .auth(token, { type: 'bearer' })
+        .send({ roleNames })
+        .expect(400);
+    }
+    expect(service.assignRoles).not.toHaveBeenCalled();
+    await request(server)
+      .put('/users/assign-roles/2')
+      .auth(token, { type: 'bearer' })
+      .send({ roleNames: ['STAFF'] })
+      .expect(200);
+    expect(service.assignRoles).toHaveBeenCalledWith(2, ['STAFF'], 1, true);
+  });
+
+  it('rejects direct self-deactivation but allows another account with the delete grant', async () => {
+    const account = Object.assign(new User(), { idUser: 2, isActive: true });
+    const repository = {
+      findOne: jest.fn().mockResolvedValue(account),
+      save: jest.fn((user: User) => Promise.resolve(user)),
+    };
+    const users = new UsersService(repository as unknown as Repository<User>, {} as RolesService);
+    capabilities.permissions = ['user.delete'];
+    service.delete.mockImplementationOnce((id: number, author: number) => users.delete(id, author));
+    const response = await request(server)
+      .delete('/users/1')
+      .auth(token, { type: 'bearer' })
+      .send({ idUser: 9 })
+      .expect(400);
+    expect((response.body as { message: string }).message).toBe(
+      'No puedes desactivar tu propia cuenta',
+    );
+    expect(repository.findOne).not.toHaveBeenCalled();
+    expect(repository.save).not.toHaveBeenCalled();
+    service.delete.mockImplementationOnce((id: number, author: number) => users.delete(id, author));
+    await request(server).delete('/users/2').auth(token, { type: 'bearer' }).expect(200);
+    expect(account).toMatchObject({ isActive: false, updatedBy: 1, deletedBy: 1 });
+    expect(repository.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores manual password changes while updating administrative fields without exposing credentials', async () => {
+    const account = Object.assign(new User(), {
+      idUser: 2,
+      name: 'Before',
+      password: 'original-hash',
+      roles: [{ idRole: 1, name: 'STAFF' }],
+    });
+    const repository = {
+      findOne: jest.fn().mockResolvedValue(account),
+      merge: jest.fn((user: User, fields: Partial<User>) =>
+        Object.assign(
+          user,
+          Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),
+        ),
+      ),
+      save: jest.fn((user: User) => Promise.resolve(user)),
+    };
+    const users = new UsersService(repository as unknown as Repository<User>, {} as RolesService);
+    capabilities.permissions = ['user.update', 'user.get-one-by-id'];
+    service.update.mockImplementationOnce((id: number, dto: never, author: number) =>
+      users.update(id, dto, author),
+    );
+    const response = await request(server)
+      .patch('/users/2')
+      .auth(token, { type: 'bearer' })
+      .send({ name: 'Ana', password: 'new-secret', passwordHash: 'injected', resetToken: 'reset' })
+      .expect(200);
+    expect(service.update).toHaveBeenCalledWith(2, { name: 'Ana' }, 1);
+    expect(account.password).toBe('original-hash');
+    expect(account.name).toBe('Ana');
+    expect(JSON.stringify(response.body)).not.toMatch(/password|Token|original-hash|new-secret/);
+    service.getAdministrativeDetail.mockResolvedValueOnce(account);
+    const detail = await request(server)
+      .get('/users/id/2')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(JSON.stringify(detail.body)).not.toContain('original-hash');
+    expect((detail.body as { data: User }).data).not.toHaveProperty('password');
   });
 });

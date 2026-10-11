@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { UserCreateDto } from 'src/dtos/users/users.dto';
 import { User } from 'src/entities/users/users.entity';
 import { Repository } from 'typeorm';
+import { UsersQueryDto } from 'src/dtos/users/users-query.dto';
+import { statusFilter } from 'src/common/utils/status-filter';
 
 import * as bcrypt from 'bcrypt';
 
@@ -18,21 +20,45 @@ export class UsersService {
 
   private readonly logger = new Logger(UsersService.name);
 
-  async getAll() {
+  private assertHasRoles(roles: unknown[] | undefined) {
+    if (!roles?.length) throw new BadRequestException('El usuario debe tener al menos un rol');
+  }
+
+  async getAll(query: UsersQueryDto = new UsersQueryDto()) {
     const qb = this.userRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.roles', 'roles')
       .orderBy('user.idUser', 'ASC');
 
-    const [data] = await qb.getManyAndCount();
+    const filter = statusFilter(query.status);
+    if (filter.isActive !== undefined) qb.andWhere('user.isActive = :isActive', filter);
+    if (query.search?.trim()) {
+      qb.andWhere(
+        '(user.name ILIKE :search OR user.lastname ILIKE :search OR user.username ILIKE :search OR user.email ILIKE :search OR user.ci ILIKE :search)',
+        { search: `%${query.search.trim().replace(/[\\%_]/g, '\\$&')}%` },
+      );
+    }
+    qb.skip((query.page - 1) * query.limit).take(query.limit);
+    const [data, total] = await qb.getManyAndCount();
     return {
       data,
+      meta: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
     };
   }
 
-  async create(userCreateDto: UserCreateDto): Promise<User> {
+  async create(userCreateDto: UserCreateDto, authorId: number): Promise<User> {
+    this.assertHasRoles(userCreateDto.roleNames);
     const user = await this.userRepository.findOne({
-      where: [{ email: userCreateDto.email }, { username: userCreateDto.username }],
+      where: [
+        { email: userCreateDto.email },
+        { username: userCreateDto.username },
+        { ci: userCreateDto.ci },
+      ],
     });
     if (user) throw new BadRequestException('User already exists');
 
@@ -52,7 +78,7 @@ export class UsersService {
       password: hash,
       roles,
     });
-    userCreated.createdBy = 0;
+    userCreated.createdBy = authorId;
     return this.userRepository.save(userCreated);
   }
 
@@ -102,15 +128,28 @@ export class UsersService {
     });
   }
 
-  async assignRoles(idUser: number, roleNames: string[]) {
+  async getAdministrativeDetail(idUser: number) {
     const user = await this.userRepository.findOne({
-      where: { idUser, isActive: true },
+      where: { idUser },
+      relations: { roles: true },
+    });
+    if (!user) throw new BadRequestException('User not found');
+    return user;
+  }
+
+  async assignRoles(idUser: number, roleNames: string[], authorId: number, replace = false) {
+    if (replace) this.assertHasRoles(roleNames);
+    const user = await this.userRepository.findOne({
+      where: replace ? { idUser } : { idUser, isActive: true },
       relations: ['roles'],
     });
     if (!user) throw new BadRequestException('User not found');
-    const roles = [...(user.roles ?? [])];
+    const roles = replace ? [] : [...(user.roles ?? [])];
     for (const rn of new Set(roleNames.map((name) => name.toUpperCase().trim()))) {
-      const role = await this.rolesService.getOneByName(rn);
+      // Preserve existing inactive associations, but never grant new inactive roles.
+      const role =
+        (replace ? user.roles.find((assigned) => assigned.name === rn) : undefined) ??
+        (await this.rolesService.getOneByName(rn));
       if (!role) throw new BadRequestException(`Role not found: ${rn}`);
 
       const alreadyAssigned = roles.some((r) => r.idRole === role.idRole);
@@ -119,33 +158,44 @@ export class UsersService {
       roles.push(role);
     }
 
+    this.assertHasRoles(roles);
     user.roles = roles;
     user.updatedAt = new Date();
+    user.updatedBy = authorId;
     return this.userRepository.save(user);
   }
 
-  async delete(idUser: number) {
+  async delete(idUser: number, authorId: number) {
+    if (idUser === authorId) {
+      throw new BadRequestException('No puedes desactivar tu propia cuenta');
+    }
     const user = await this.userRepository.findOne({
       where: { idUser: idUser, isActive: true },
     });
     if (!user) throw new BadRequestException('User not found');
     user.isActive = false;
+    user.deletedBy = authorId;
+    user.updatedBy = authorId;
     return this.userRepository.save(user);
   }
 
-  async reactivate(idUser: number) {
+  async reactivate(idUser: number, authorId: number) {
     const user = await this.userRepository.findOne({
       where: { idUser: idUser, isActive: false },
+      relations: ['roles'],
     });
     if (!user) throw new BadRequestException('User not found');
+    this.assertHasRoles(user.roles);
     user.isActive = true;
+    user.updatedBy = authorId;
     return this.userRepository.save(user);
   }
 
-  async update(idUser: number, dto: UserUpdateDto) {
-    const user = await this.userRepository.findOne({ where: { idUser, isActive: true } });
+  async update(idUser: number, dto: UserUpdateDto, authorId: number) {
+    const user = await this.userRepository.findOne({ where: { idUser }, relations: ['roles'] });
     if (!user) throw new BadRequestException('User not found');
-    for (const field of ['email', 'username'] as const) {
+    this.assertHasRoles(user.roles);
+    for (const field of ['email', 'username', 'ci'] as const) {
       if (dto[field] !== undefined) {
         const duplicate = await this.userRepository.findOne({ where: { [field]: dto[field] } });
         if (duplicate && duplicate.idUser !== idUser)
@@ -153,9 +203,9 @@ export class UsersService {
       }
     }
     // Explicit fields keep role assignment behind its own permission.
-    const { email, username, name, lastname, ci, password } = dto;
+    const { email, username, name, lastname, ci } = dto;
     this.userRepository.merge(user, { email, username, name, lastname, ci });
-    if (password !== undefined) user.password = await bcrypt.hash(password, 10);
+    user.updatedBy = authorId;
     const saved = await this.userRepository.save(user);
     return {
       idUser: saved.idUser,

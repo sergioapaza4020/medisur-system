@@ -9,6 +9,7 @@ import PerfectScrollbar from 'react-perfect-scrollbar';
 import type { VerticalMenuContextProps } from '@menu/components/vertical-menu/Menu';
 
 // Component Imports
+import { useAuth } from '@/components/auth/AuthGuard';
 import { Menu, SubMenu, MenuItem, MenuSection } from '@menu/vertical-menu';
 
 // Hook Imports
@@ -35,6 +36,7 @@ const RenderExpandIcon = ({ open, transitionDuration }: RenderExpandIconProps) =
 const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectScrollbar: boolean) => void }) => {
   // Hooks
   const theme = useTheme();
+  const { hasPermission } = useAuth();
   const { isBreakpointReached, transitionDuration } = useVerticalNav();
 
   const ScrollWrapper = isBreakpointReached ? 'div' : PerfectScrollbar;
@@ -60,6 +62,11 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
         renderExpandedMenuItemIcon={{ icon: <i className='ri-circle-line' /> }}
         menuSectionStyles={menuSectionStyles(theme)}
       >
+        {hasPermission('user.get-all') && (
+          <MenuItem href='/dashboard/users' icon={<i className='ri-group-line' />}>
+            Usuarios
+          </MenuItem>
+        )}
         <MenuSection label='Misc'>
           <MenuItem href='/dashboard/account-settings' icon={<i className='ri-user-settings-line' />}>
             Configuraciones de cuenta
