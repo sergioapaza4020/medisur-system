@@ -43,7 +43,7 @@ const NavSearch = () => {
           fontSize: '0.875rem',
         }}
       >
-        Buscar pacientes, citas o historiales...
+        Buscar
       </Typography>
       <Box
         component='span'
@@ -59,7 +59,7 @@ const NavSearch = () => {
           py: 0.5,
         }}
       >
-        Ctrl+K
+        Ctrl + K
       </Box>
     </Box>
   );

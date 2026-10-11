@@ -20,13 +20,13 @@ import {
   InputAdornment,
   MenuItem,
   Stack,
-  TablePagination,
   TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
 
 import { useAuth } from '@/components/auth/AuthGuard';
+import ListPagination from '@/components/pagination/ListPagination';
 import { rolesService } from '@/services/roles/rolesService';
 import { usersService } from '@/services/users/usersService';
 import type { AdministrativeUser, CreateUser, UserFields, UsersPage, UsersQuery } from '@/types/users';
@@ -410,26 +410,11 @@ export default function UsersAdministration() {
                   </table>
                 </div>
                 {page.data.length === 0 && <Typography>No se encontraron usuarios.</Typography>}
-                <TablePagination
-                  component='div'
-                  count={page.meta.total}
-                  page={query.page - 1}
-                  rowsPerPage={query.limit}
-                  rowsPerPageOptions={[10, 25, 50]}
-                  onPageChange={(_, value) => setQuery((current) => ({ ...current, page: value + 1 }))}
-                  onRowsPerPageChange={(event) =>
-                    setQuery((current) => ({ ...current, page: 1, limit: Number(event.target.value) }))
-                  }
+                <ListPagination
+                  query={query}
+                  meta={page.meta}
+                  onChange={(pagination) => setQuery((current) => ({ ...current, ...pagination }))}
                   labelRowsPerPage='Usuarios por página'
-                  labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
-                  getItemAriaLabel={(type) =>
-                    ({
-                      first: 'Primera página',
-                      last: 'Última página',
-                      next: 'Página siguiente',
-                      previous: 'Página anterior',
-                    })[type]
-                  }
                 />
               </>
             )

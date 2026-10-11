@@ -6,8 +6,9 @@ import type * as MuiModule from '@mui/material';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import UsersAdministration from './UsersAdministration';
+import type ListPagination from '@/components/pagination/ListPagination';
 
-import type { AdministrativeUser, CreateUser, UserFields, UsersQuery } from '@/types/users';
+import type { AdministrativeUser, CreateUser, UserFields, UsersPage, UsersQuery } from '@/types/users';
 
 const mocks = vi.hoisted(() => ({
   stateIndex: 0,
@@ -18,6 +19,10 @@ const mocks = vi.hoisted(() => ({
   clearSearch: null as (() => void) | null,
   effects: [] as (() => unknown)[],
   runEffects: false,
+  paginationTest: false,
+  pagination: null as ComponentProps<typeof ListPagination> | null,
+  pageResult: null as UsersPage | null,
+  completed: null as { query: UsersQuery; refresh: number } | null,
   list: vi.fn().mockResolvedValue({ data: [], meta: { totalPages: 1 } }),
   target: null as AdministrativeUser | null,
   editor: null as { id?: number; roleNames?: string[] } | null,
@@ -71,6 +76,14 @@ vi.mock('react', async (importOriginal) => {
           },
         ];
       if (index === 2)
+        if (mocks.paginationTest)
+          return [
+            mocks.pageResult,
+            (value: UsersPage | null) => {
+              mocks.pageResult = value;
+            },
+          ];
+      if (index === 2)
         return [
           {
             data: [
@@ -84,7 +97,16 @@ vi.mock('react', async (importOriginal) => {
           },
           vi.fn(),
         ];
-      if (index === 3) return [{ query: mocks.query, refresh: 0 }, vi.fn()];
+      if (index === 3) {
+        if (mocks.paginationTest)
+          return [
+            mocks.completed,
+            (value: typeof mocks.completed) => {
+              mocks.completed = value;
+            },
+          ];
+        return [{ query: mocks.query, refresh: 0 }, vi.fn()];
+      }
       if (index === 7) return [mocks.editor, vi.fn()];
       if (index === 8) return [mocks.form, mocks.setForm];
       if (index === 10) return [mocks.detail, vi.fn()];
@@ -114,7 +136,7 @@ vi.mock('@mui/material', async (importOriginal) => {
       if (props.label === 'Roles (obligatorio)') mocks.roleField = props;
       return <actual.TextField {...props} />;
     },
-    Box: (props: ComponentProps<typeof actual.Box>) => {
+    Box: (props: ComponentProps<typeof actual.Box> & { component?: 'form' }) => {
       if (props.component === 'form' && props.children && mocks.editor) {
         mocks.submit = () => (props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault: vi.fn() });
       }
@@ -152,6 +174,15 @@ vi.mock('@/services/users/usersService', () => ({
     list: mocks.list,
   },
 }));
+vi.mock('@/components/pagination/ListPagination', async (importOriginal) => {
+  const actual = await importOriginal<{ default: typeof ListPagination }>();
+  return {
+    default: (props: ComponentProps<typeof ListPagination>) => {
+      mocks.pagination = props;
+      return <actual.default {...props} />;
+    },
+  };
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -163,6 +194,10 @@ beforeEach(() => {
   mocks.clearSearch = null;
   mocks.effects = [];
   mocks.runEffects = false;
+  mocks.paginationTest = false;
+  mocks.pagination = null;
+  mocks.pageResult = null;
+  mocks.completed = null;
   mocks.target = null;
   mocks.editor = null;
   mocks.deniedPermissions.clear();
@@ -172,6 +207,66 @@ beforeEach(() => {
   mocks.submit = null;
   mocks.form = { username: 'ana', email: 'ana@example.com', name: 'Ana', lastname: 'Pérez', ci: '123' };
   mocks.buttons.clear();
+});
+
+describe('User list with shared pagination', () => {
+  it('loads changed pages and page sizes, preserves filters and renders loading and empty results', async () => {
+    mocks.paginationTest = true;
+    mocks.query = { page: 1, limit: 10, status: 'inactive', search: 'Ana' };
+    const makePage = (page: number, limit: number, idUser?: number): UsersPage => ({
+      status: true,
+      statusCode: 200,
+      data:
+        idUser === undefined
+          ? []
+          : [
+              {
+                idUser,
+                username: `usuario-${idUser}`,
+                name: 'Ana',
+                lastname: 'Pérez',
+                email: 'ana@example.com',
+                ci: '123',
+                isActive: false,
+                roles: [],
+              },
+            ],
+      meta: {
+        page,
+        limit,
+        total: idUser === undefined ? 0 : 57,
+        totalPages: idUser === undefined ? 0 : Math.ceil(57 / limit),
+      },
+    });
+    mocks.pageResult = makePage(1, 10, 1);
+    mocks.completed = { query: mocks.query, refresh: 0 };
+    const render = () => {
+      mocks.stateIndex = 0;
+      mocks.effects = [];
+      return renderToStaticMarkup(<UsersAdministration />);
+    };
+    expect(render()).toContain('usuario-1');
+    mocks.pagination?.onChange({ page: 2, limit: 10 });
+    expect(render()).toContain('Cargando usuarios');
+    expect(render()).not.toContain('usuario-1');
+    mocks.list.mockResolvedValueOnce(makePage(2, 10, 11));
+    mocks.runEffects = true;
+    render();
+    mocks.effects[0]();
+    await vi.waitFor(() => expect(mocks.completed?.query).toBe(mocks.query));
+    expect(mocks.list).toHaveBeenLastCalledWith({ page: 2, limit: 10, status: 'inactive', search: 'Ana' });
+    expect(render()).toContain('usuario-11');
+    expect(render()).toContain('11–20 de 57');
+    mocks.pagination?.onChange({ page: 1, limit: 25 });
+    expect(render()).toContain('Cargando usuarios');
+    mocks.list.mockResolvedValueOnce(makePage(1, 25));
+    render();
+    mocks.effects[0]();
+    await vi.waitFor(() => expect(mocks.completed?.query).toBe(mocks.query));
+    expect(mocks.list).toHaveBeenLastCalledWith({ page: 1, limit: 25, status: 'inactive', search: 'Ana' });
+    expect(render()).toContain('No se encontraron usuarios.');
+    expect(render()).toContain('0–0 de 0');
+  });
 });
 
 describe('Role labels and user search', () => {
@@ -202,7 +297,7 @@ describe('Role labels and user search', () => {
     mocks.stateIndex = 0;
     mocks.searchSubmit = null;
     renderToStaticMarkup(<UsersAdministration />);
-    mocks.searchSubmit?.();
+    (mocks.searchSubmit as (() => void) | null)?.();
     expect(mocks.query).toEqual({ page: 1, limit: 25, status: 'active', search: 'Ana' });
     expect(mocks.clearSearch).not.toBeNull();
     mocks.clearSearch?.();
@@ -404,7 +499,7 @@ describe('Administrative credentials', () => {
       password: 'hidden-hash',
       refreshToken: 'hidden-refresh',
       resetToken: 'hidden-reset',
-    } as AdministrativeUser;
+    } as unknown as AdministrativeUser;
     const html = renderToStaticMarkup(<UsersAdministration />);
     expect(html).toContain('Información del usuario');
     expect(html).not.toMatch(/hidden-hash|hidden-refresh|hidden-reset/);

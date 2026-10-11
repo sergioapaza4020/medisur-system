@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import Link from 'next/link';
@@ -35,6 +35,7 @@ const Login = ({ mode }: { mode: Mode }) => {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -42,11 +43,13 @@ const Login = ({ mode }: { mode: Mode }) => {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (submitInFlight.current) return;
     if (!username.trim() || !password) {
       setError('Ingresa tu usuario y contraseña');
       return;
     }
+    // Lock synchronously: repeated submits can arrive before React renders the loading state.
+    submitInFlight.current = true;
     setIsSubmitting(true);
     setError(null);
     try {
@@ -56,7 +59,7 @@ const Login = ({ mode }: { mode: Mode }) => {
     } catch (error) {
       setError(getApiErrorMessage(error));
       setPassword('');
-    } finally {
+      submitInFlight.current = false;
       setIsSubmitting(false);
     }
   };

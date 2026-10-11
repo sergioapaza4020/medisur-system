@@ -1,5 +1,7 @@
 # HU-USR-04 — Administración de usuarios
 
+TASK-API-01 extrajo la paginación del listado a DTOs, contratos, utilidad de consulta y componente compartidos. El contrato y comportamiento de usuarios se conservan; los módulos nuevos deben seguir [el patrón de paginación común](task-api-01-pagination.md).
+
 ## Comportamiento
 
 La ruta protegida `/dashboard/users` reutiliza el guard de autenticación, `useAuth`, el cliente Axios centralizado, el manejo de errores de API y el estilo de tablas de Materio. Permite consultar usuarios, filtrar por estado y buscar por nombre, apellido, usuario, correo o documento. Muestra los roles activos y el estado de cada cuenta.
