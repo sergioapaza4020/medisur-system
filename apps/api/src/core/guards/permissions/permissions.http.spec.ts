@@ -34,6 +34,7 @@ describe('Permission enforcement over HTTP', () => {
     permissions: [] as string[],
   };
   const service = {
+    getOneById: jest.fn().mockResolvedValue({ permissions: [] }),
     getAll: jest.fn().mockResolvedValue([]),
     create: jest.fn().mockResolvedValue({}),
     update: jest.fn().mockResolvedValue({}),
@@ -81,6 +82,56 @@ describe('Permission enforcement over HTTP', () => {
   beforeEach(() => {
     capabilities.permissions = [];
     jest.clearAllMocks();
+  });
+
+  it('protects batch replacement and detail by specific grants without a SUPERADMIN bypass', async () => {
+    await request(server)
+      .put('/roles/assign-permissions/1')
+      .send({ permissionNames: [] })
+      .expect(401);
+    await request(server)
+      .put('/roles/assign-permissions/1')
+      .auth(token, { type: 'bearer' })
+      .send({ permissionNames: [] })
+      .expect(403);
+    await request(server).get('/roles/id/1').auth(token, { type: 'bearer' }).expect(403);
+    expect(service.assignPermissions).not.toHaveBeenCalled();
+    capabilities.permissions = ['role.assign-permissions'];
+    for (const permissionNames of [['user.create', 'user.create'], [' '], [1], null]) {
+      await request(server)
+        .put('/roles/assign-permissions/1')
+        .auth(token, { type: 'bearer' })
+        .send({ permissionNames })
+        .expect(400);
+    }
+    await request(server)
+      .put('/roles/assign-permissions/1')
+      .auth(token, { type: 'bearer' })
+      .send({ permissionNames: [] })
+      .expect(200);
+    expect(service.assignPermissions).toHaveBeenCalledWith(1, [], 1, true);
+    capabilities.permissions = ['role.get-one-by-id'];
+    await request(server).get('/roles/id/1').auth(token, { type: 'bearer' }).expect(200);
+    expect(service.getOneById).toHaveBeenCalledWith(1);
+    await request(server).get('/roles/id/not-an-id').auth(token, { type: 'bearer' }).expect(400);
+  });
+
+  it('validates and forwards the shared catalog pagination', async () => {
+    capabilities.permissions = ['permission.get-all'];
+    for (const query of ['page=0', 'page=1.5', 'limit=101', 'limit=0', 'status=invalid']) {
+      await request(server)
+        .get(`/permissions?${query}`)
+        .auth(token, { type: 'bearer' })
+        .expect(400);
+    }
+    expect(service.getAll).not.toHaveBeenCalled();
+    await request(server)
+      .get('/permissions?page=2&limit=25&status=all')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.getAll).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2, limit: 25, status: 'all' }),
+    );
   });
 
   afterAll(async () => {

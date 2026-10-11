@@ -1,6 +1,8 @@
 import { apiClient } from '../http/axiosClient';
 
 import type { CreateRole, RolesPage, RolesQuery, UpdateRole } from '@/types/roles';
+import type { ApiResponse } from '@/types/auth';
+import type { RolePermissions } from '@/types/permissions';
 
 export interface RoleOption {
   idRole: number;
@@ -9,6 +11,13 @@ export interface RoleOption {
 }
 
 export const rolesService = {
+  async getPermissions(id: number): Promise<RolePermissions> {
+    return (await apiClient.get<ApiResponse<RolePermissions>>(`/roles/id/${id}`)).data.data;
+  },
+  async replacePermissions(id: number, permissionNames: string[]): Promise<RolePermissions> {
+    return (await apiClient.put<ApiResponse<RolePermissions>>(`/roles/assign-permissions/${id}`, { permissionNames }))
+      .data.data;
+  },
   async list(): Promise<RoleOption[]> {
     const options: RoleOption[] = [];
     let page = 1;

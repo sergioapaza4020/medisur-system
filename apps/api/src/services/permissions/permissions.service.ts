@@ -1,4 +1,6 @@
-import { RecordStatus } from 'src/dtos/common/status-query.dto';
+import { PermissionsQueryDto } from 'src/dtos/permissions/permissions-query.dto';
+import { PaginatedResult } from 'src/common/types/pagination.type';
+import { paginate } from 'src/common/utils/paginate';
 import { statusFilter } from '@common/utils/status-filter';
 import { PermissionUpdateDto } from 'src/dtos/permissions/permissions-update.dto';
 import { BadRequestException, Injectable } from '@nestjs/common';
@@ -27,8 +29,15 @@ export class PermissionsService {
     return this.permissionRepository.save(permissionCreated);
   }
 
-  async getAll(status: RecordStatus = RecordStatus.ACTIVE): Promise<Permission[]> {
-    return this.permissionRepository.find({ where: statusFilter(status) });
+  async getAll(
+    query: PermissionsQueryDto = new PermissionsQueryDto(),
+  ): Promise<PaginatedResult<Permission>> {
+    const qb = this.permissionRepository
+      .createQueryBuilder('permission')
+      .orderBy('permission.name', 'ASC');
+    const filter = statusFilter(query.status);
+    if (filter.isActive !== undefined) qb.andWhere('permission.isActive = :isActive', filter);
+    return paginate(qb, query);
   }
 
   async getOneByName(name: string) {

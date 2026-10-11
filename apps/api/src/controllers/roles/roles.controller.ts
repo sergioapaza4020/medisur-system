@@ -55,7 +55,7 @@ export class RolesController {
 
   @Permissions('role.get-one-by-id')
   @Get('id/:idRole')
-  async getOneById(@Param('idRole') idRole: number) {
+  async getOneById(@Param('idRole', ParseIntPipe) idRole: number) {
     return this.rolesService.getOneById(idRole);
   }
 
@@ -81,6 +81,16 @@ export class RolesController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.rolesService.update(idRole, roleUpdateDto, user.idUser);
+  }
+
+  @Permissions('role.assign-permissions')
+  @Put('assign-permissions/:idRole')
+  async replacePermissions(
+    @Param('idRole', ParseIntPipe) idRole: number,
+    @Body() dto: RolesAssignPermissionsDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.rolesService.assignPermissions(idRole, dto.permissionNames, user.idUser, true);
   }
 
   @Permissions('role.update')

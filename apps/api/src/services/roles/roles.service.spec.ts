@@ -24,6 +24,67 @@ describe('RolesService', () => {
     getOneByName: jest.fn(),
   };
 
+  it('replaces assignments atomically, preserves codes and permits removing every grant', async () => {
+    const previous = { idPermission: 1, name: 'user.get-all', isActive: true } as Permission;
+    const next = { idPermission: 2, name: 'user.create', isActive: true } as Permission;
+    const role = {
+      idRole: 1,
+      name: 'SUPERADMIN',
+      description: 'Base',
+      permissions: [previous],
+    } as Role;
+    roleRepository.findOne.mockResolvedValue(role);
+    roleRepository.save.mockImplementation((value: Role) => Promise.resolve(value));
+    permissionsService.getOneByName.mockResolvedValue(next);
+    await service.assignPermissions(1, [next.name, next.name], 7, true);
+    expect(role).toMatchObject({
+      name: 'SUPERADMIN',
+      description: 'Base',
+      permissions: [next],
+      updatedBy: 7,
+    });
+    expect(roleRepository.save).toHaveBeenCalledTimes(1);
+    permissionsService.getOneByName.mockResolvedValueOnce(previous).mockResolvedValueOnce(null);
+    await expect(
+      service.assignPermissions(1, [previous.name, 'clinical.global'], 7, true),
+    ).rejects.toThrow('Permission not found');
+    expect(role.permissions).toEqual([next]);
+    expect(roleRepository.save).toHaveBeenCalledTimes(1);
+    await service.assignPermissions(1, [], 7, true);
+    expect(role.permissions).toEqual([]);
+  });
+
+  it('consults inactive roles with their assigned permissions without enabling them', async () => {
+    const role = {
+      idRole: 5,
+      isActive: false,
+      permissions: [{ name: 'user.create', isActive: false }],
+    } as Role;
+    roleRepository.findOne.mockResolvedValue(role);
+    expect(await service.getOneById(5)).toBe(role);
+    expect(roleRepository.findOne).toHaveBeenCalledWith({
+      where: { idRole: 5 },
+      relations: ['permissions'],
+    });
+    expect(roleRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('can retain or withdraw inactive associations but cannot grant inactive or unknown catalog permissions', async () => {
+    const permission = { idPermission: 3, name: 'user.update', isActive: false } as Permission;
+    const role = { idRole: 5, permissions: [permission] } as Role;
+    roleRepository.findOne.mockResolvedValue(role);
+    permissionsService.getOneByName.mockResolvedValue(null);
+    await service.assignPermissions(5, [permission.name], 7, true);
+    expect(role.permissions).toEqual([permission]);
+    expect(permission.isActive).toBe(false);
+    expect(permissionsService.getOneByName).not.toHaveBeenCalled();
+    await service.assignPermissions(5, [], 7, true);
+    await expect(service.assignPermissions(5, [permission.name], 7, true)).rejects.toThrow(
+      'Permission not found',
+    );
+    expect(role.permissions).toEqual([]);
+  });
+
   beforeEach(async () => {
     jest.clearAllMocks();
 

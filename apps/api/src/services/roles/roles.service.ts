@@ -91,20 +91,32 @@ export class RolesService {
   }
 
   async getOneById(idRole: number) {
-    return this.roleRepository.findOne({
-      where: { idRole, isActive: true },
+    const role = await this.roleRepository.findOne({
+      where: { idRole },
+      relations: ['permissions'],
     });
+    if (!role) throw new BadRequestException('Role not found');
+    return role;
   }
 
-  async assignPermissions(idRole: number, permissionNames: string[], authorId: number) {
+  async assignPermissions(
+    idRole: number,
+    permissionNames: string[],
+    authorId: number,
+    replace = false,
+  ) {
     const role = await this.roleRepository.findOne({
       where: { idRole, isActive: true },
       relations: ['permissions'],
     });
     if (!role) throw new BadRequestException('Role not found');
-    const permissions = [...(role.permissions ?? [])];
+    const permissions = replace ? [] : [...(role.permissions ?? [])];
     for (const pn of new Set(permissionNames)) {
-      const permission = await this.permissionsService.getOneByName(pn);
+      // Retaining an inactive association does not reactivate its capability.
+      const retained = replace
+        ? role.permissions?.find((permission) => permission.name === pn)
+        : undefined;
+      const permission = retained ?? (await this.permissionsService.getOneByName(pn));
       if (!permission) throw new BadRequestException(`Permission not found: ${pn}`);
 
       const alreadyAssigned = permissions.some((p) => p.name === pn);

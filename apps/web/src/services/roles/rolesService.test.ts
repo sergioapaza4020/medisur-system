@@ -3,11 +3,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { rolesService } from './rolesService';
 import { apiClient } from '../http/axiosClient';
 
-vi.mock('../http/axiosClient', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() } }));
+vi.mock('../http/axiosClient', () => ({
+  apiClient: { get: vi.fn(), put: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+}));
 
 beforeEach(() => vi.clearAllMocks());
 
 describe('Roles using the existing HTTP client', () => {
+  it('reads assignments and replaces multiple grants without sending role or catalog modifications', async () => {
+    const role = { idRole: 1, name: 'SUPERADMIN', permissions: [{ name: 'user.create' }] };
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: role } });
+    vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { data: role } });
+    expect(await rolesService.getPermissions(1)).toEqual(role);
+    expect(await rolesService.replacePermissions(1, ['user.create'])).toEqual(role);
+    expect(apiClient.get).toHaveBeenCalledWith('/roles/id/1');
+    expect(apiClient.put).toHaveBeenCalledWith('/roles/assign-permissions/1', { permissionNames: ['user.create'] });
+  });
   it('preserves shared pagination, filters and internal role codes', async () => {
     const result = {
       data: [{ name: 'SUPERADMIN', isSystem: true }],
