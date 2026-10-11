@@ -16,7 +16,7 @@ describe('User administration with the shared HTTP client', () => {
     vi.mocked(apiClient.get)
       .mockResolvedValueOnce({ data: page })
       .mockResolvedValueOnce({ data: { data: page.data[0] } })
-      .mockResolvedValueOnce({ data: { data: [{ name: 'STAFF' }] } });
+      .mockResolvedValueOnce({ data: { data: [{ name: 'STAFF' }], meta: { totalPages: 1 } } });
     const query = { page: 2, limit: 10, status: 'all' as const, search: 'Ana' };
 
     expect(await usersService.list(query)).toEqual(page);
@@ -24,7 +24,7 @@ describe('User administration with the shared HTTP client', () => {
     expect(await usersService.get(1)).toEqual(page.data[0]);
     expect(apiClient.get).toHaveBeenCalledWith('/users/id/1');
     expect(await rolesService.list()).toEqual([{ name: 'STAFF' }]);
-    expect(apiClient.get).toHaveBeenCalledWith('/roles');
+    expect(apiClient.get).toHaveBeenCalledWith('/roles', { params: { page: 1, limit: 100, status: 'all' } });
   });
 
   it('uses the existing administrative endpoints and propagates API failures', async () => {

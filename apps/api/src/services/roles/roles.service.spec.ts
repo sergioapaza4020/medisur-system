@@ -6,6 +6,9 @@ import { Permission } from 'src/entities/permissions/permissions.entity';
 import { Role } from 'src/entities/roles/roles.entity';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RolesService } from './roles.service';
+import { MEDISUR_ROLES } from 'src/database/seeders/access-control.catalog';
+import { RolesQueryDto } from 'src/dtos/roles/roles-query.dto';
+import { RecordStatus } from 'src/dtos/common/status-query.dto';
 
 describe('RolesService', () => {
   let service: RolesService;
@@ -14,6 +17,7 @@ describe('RolesService', () => {
     create: jest.fn(),
     findOne: jest.fn(),
     save: jest.fn(),
+    createQueryBuilder: jest.fn(),
   };
 
   const permissionsService = {
@@ -143,7 +147,7 @@ describe('RolesService', () => {
       service.update(
         1,
         {
-          name: 'administrative staff',
+          name: ' staff ',
           description: 'Updated description',
           permissionNames: [updatedPermission.name, updatedPermission.name],
         },
@@ -152,11 +156,176 @@ describe('RolesService', () => {
     ).resolves.toBe(role);
 
     expect(role).toMatchObject({
-      name: 'ADMINISTRATIVE STAFF',
+      name: 'STAFF',
       description: 'Updated description',
       permissions: [updatedPermission],
       updatedBy: 7,
     });
     expect(roleRepository.save).toHaveBeenCalledWith(role);
+  });
+
+  it('creates an administrative role without permissions using the existing creation logic', async () => {
+    roleRepository.findOne.mockResolvedValue(null);
+    const role = {
+      idRole: 5,
+      name: 'RECEPTION',
+      isActive: true,
+      permissions: [],
+    } as unknown as Role;
+    roleRepository.create.mockReturnValue(role);
+    roleRepository.save.mockResolvedValue(role);
+    await service.create(
+      { name: ' reception ', description: ' Recepción ', permissionNames: [] },
+      7,
+    );
+    expect(roleRepository.create).toHaveBeenCalledWith({
+      name: 'RECEPTION',
+      description: 'Recepción',
+      permissions: [],
+    });
+    expect(role.createdBy).toBe(7);
+    expect(permissionsService.getOneByName).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate normalized names, including inactive roles', async () => {
+    roleRepository.findOne.mockResolvedValue({ name: 'RECEPTION', isActive: false });
+    await expect(service.create({ name: ' reception ', permissionNames: [] }, 7)).rejects.toThrow(
+      'Role already exists',
+    );
+    expect(roleRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('edits only administrative information of inactive roles without touching codes, state or permissions', async () => {
+    const permissions = [{ name: 'user.get-all' }] as Permission[];
+    const role = {
+      idRole: 5,
+      name: 'RECEPTION',
+      description: null,
+      isActive: false,
+      permissions,
+    } as Role;
+    roleRepository.findOne.mockResolvedValue(role);
+    roleRepository.save.mockResolvedValue(role);
+    await service.updateAdministrative(
+      5,
+      {
+        description: ' Updated ',
+        name: 'SUPERADMIN',
+        permissionNames: [],
+        isActive: true,
+      } as never,
+      7,
+    );
+    expect(role).toMatchObject({
+      name: 'RECEPTION',
+      description: 'Updated',
+      isActive: false,
+      updatedBy: 7,
+    });
+    expect(role.permissions).toBe(permissions);
+    expect(permissionsService.getOneByName).not.toHaveBeenCalled();
+    expect(roleRepository.findOne).toHaveBeenCalledWith({ where: { idRole: 5 } });
+    await service.updateAdministrative(5, { description: '' }, 7);
+    expect(role.description).toBeNull();
+  });
+
+  it.each(MEDISUR_ROLES)(
+    'protects the base role $name from deactivation and legacy code changes',
+    async ({ name }) => {
+      const role = { idRole: 1, name, isActive: true, permissions: [] } as unknown as Role;
+      roleRepository.findOne.mockResolvedValue(role);
+      await expect(service.delete(1, 7)).rejects.toThrow('Los roles base');
+      await expect(service.update(1, { name: 'CUSTOM', permissionNames: [] }, 7)).rejects.toThrow(
+        'código interno',
+      );
+      expect(role).toMatchObject({ name, isActive: true, permissions: [] });
+      expect(roleRepository.save).not.toHaveBeenCalled();
+    },
+  );
+
+  it('retains associations and audit fields when deactivating/reactivating custom roles', async () => {
+    const role = {
+      idRole: 5,
+      name: 'RECEPTION',
+      isActive: true,
+      permissions: [{ name: 'user.get-all' }],
+    } as Role;
+    roleRepository.findOne.mockResolvedValue(role);
+    await service.delete(5, 7);
+    expect(role).toMatchObject({
+      isActive: false,
+      deletedBy: 7,
+      updatedBy: 7,
+      permissions: [{ name: 'user.get-all' }],
+    });
+    await service.reactivate(5, 8);
+    expect(role).toMatchObject({ isActive: true, updatedBy: 8 });
+    expect(roleRepository.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows reactivation and administrative description edits for a legacy inactive base role', async () => {
+    const role = { idRole: 1, name: 'SUPERADMIN', isActive: false } as Role;
+    roleRepository.findOne.mockResolvedValue(role);
+    await service.reactivate(1, 7);
+    await service.updateAdministrative(1, { description: 'Administración' }, 7);
+    expect(role).toMatchObject({
+      name: 'SUPERADMIN',
+      isActive: true,
+      description: 'Administración',
+    });
+  });
+
+  it('paginates roles with existing status filters, literal search and base-role metadata', async () => {
+    const qb = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([
+        [
+          { idRole: 1, name: 'SUPERADMIN', permissions: [{ name: 'role.get-all' }] },
+          { idRole: 5, name: 'RECEPTION', permissions: [] },
+        ],
+        12,
+      ]),
+    };
+    roleRepository.createQueryBuilder.mockReturnValue(qb);
+    const result = await service.getAll(
+      Object.assign(new RolesQueryDto(), {
+        page: 2,
+        limit: 10,
+        status: RecordStatus.INACTIVE,
+        search: ' admin_% ',
+      }),
+    );
+    expect(qb.skip).toHaveBeenCalledWith(10);
+    expect(qb.take).toHaveBeenCalledWith(10);
+    expect(qb.andWhere).toHaveBeenCalledWith('role.isActive = :isActive', { isActive: false });
+    expect(qb.andWhere).toHaveBeenCalledWith(expect.any(String), { search: '%admin\\_\\%%' });
+    expect(result.meta).toEqual({ page: 2, limit: 10, total: 12, totalPages: 2 });
+    expect(result.data[0]).toMatchObject({
+      name: 'SUPERADMIN',
+      isSystem: true,
+      permissionCount: 1,
+    });
+    expect(result.data[1]).toMatchObject({
+      name: 'RECEPTION',
+      isSystem: false,
+      permissionCount: 0,
+    });
+    qb.andWhere.mockClear();
+    await service.getAll();
+    expect(qb.andWhere).not.toHaveBeenCalled();
+  });
+
+  it('rejects administrative operations on absent roles', async () => {
+    roleRepository.findOne.mockResolvedValue(null);
+    await expect(service.updateAdministrative(99, { description: 'Missing' }, 7)).rejects.toThrow(
+      'Role not found',
+    );
+    await expect(service.delete(99, 7)).rejects.toThrow('Role not found');
+    await expect(service.reactivate(99, 7)).rejects.toThrow('Role not found');
+    expect(roleRepository.save).not.toHaveBeenCalled();
   });
 });

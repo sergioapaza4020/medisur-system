@@ -1,5 +1,7 @@
 # HU-USR-05: roles y permisos MEDISUR
 
+HU-USR-06 incorpora la interfaz administrativa, paginación de roles y edición separada de descripciones. La creación administrativa ya no asigna permisos; ver [contratos y protecciones vigentes](hu-usr-06-roles.md). El catálogo y el modelo de autorización descritos aquí se conservan.
+
 ## Inventario y decisiones
 
 Se conservan las entidades User, Role y Permission, sus relaciones muchos a muchos,
