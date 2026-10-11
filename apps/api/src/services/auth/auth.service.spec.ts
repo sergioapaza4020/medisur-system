@@ -64,7 +64,7 @@ describe('AuthService', () => {
   it('validates the hash but never passes it to session creation or login responses', async () => {
     getForAuthentication.mockResolvedValue({
       idUser: 1,
-      username: 'test',
+      email: 'test@example.com',
       isActive: true,
       password: await bcrypt.hash('secret', 4),
       roles: [],
@@ -72,13 +72,15 @@ describe('AuthService', () => {
     const sessions = jest
       .spyOn(mockSessionService, 'createSession')
       .mockResolvedValue({ idSession: 1 });
-    const response = await service.login({ username: 'test', password: 'secret' }, {
+    const response = await service.login({ email: 'test@example.com', password: 'secret' }, {
       headers: {},
       socket: {},
     } as Request);
-    expect(getForAuthentication).toHaveBeenCalledWith('test');
+    expect(getForAuthentication).toHaveBeenCalledWith('test@example.com');
     expect(sessions).toHaveBeenCalledWith(
-      expect.objectContaining({ user: { idUser: 1, username: 'test', isActive: true, roles: [] } }),
+      expect.objectContaining({
+        user: { idUser: 1, email: 'test@example.com', isActive: true, roles: [] },
+      }),
     );
     expect(JSON.stringify(response)).not.toContain('password');
   });
@@ -89,11 +91,11 @@ describe('AuthService', () => {
       password: await bcrypt.hash('secret', 4),
     });
     await expect(
-      service.validateUser({ username: 'test', password: 'wrong' }),
+      service.validateUser({ email: 'test@example.com', password: 'wrong' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
     getForAuthentication.mockResolvedValue(null);
     await expect(
-      service.validateUser({ username: 'test', password: 'secret' }),
+      service.validateUser({ email: 'test@example.com', password: 'secret' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

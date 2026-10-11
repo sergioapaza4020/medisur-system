@@ -42,7 +42,6 @@ describe('Permission enforcement over HTTP', () => {
     updateAdministrative: jest.fn().mockResolvedValue({}),
     getAdministrativeDetail: jest.fn().mockResolvedValue({}),
     getOneByEmail: jest.fn().mockResolvedValue({}),
-    getOneByUsername: jest.fn().mockResolvedValue({}),
     delete: jest.fn().mockResolvedValue({}),
     reactivate: jest.fn().mockResolvedValue({}),
     assignRoles: jest.fn().mockResolvedValue({}),
@@ -265,7 +264,6 @@ describe('Permission enforcement over HTTP', () => {
     const body = {
       name: 'Ana',
       lastname: 'Pérez',
-      username: 'ana',
       email: 'ana@example.com',
       ci: '123456',
       password: 'test-password',
@@ -286,7 +284,6 @@ describe('Permission enforcement over HTTP', () => {
       .send({
         name: 'Ana',
         lastname: 'Pérez',
-        username: 'ana',
         email: 'ana@example.com',
         ci: '123',
         password: 'secret',
@@ -328,7 +325,6 @@ describe('Permission enforcement over HTTP', () => {
   it.each([
     ['get', '/users/id/1', 'user.get-one-by-id', {}],
     ['get', '/users/email/ana@example.com', 'user.get-one-by-email', {}],
-    ['get', '/users/username/ana', 'user.get-one-by-username', {}],
     ['patch', '/users/1', 'user.update', { name: 'Ana' }],
     ['delete', '/users/1', 'user.delete', {}],
     ['patch', '/users/reactivate/1', 'user.reactivate', {}],

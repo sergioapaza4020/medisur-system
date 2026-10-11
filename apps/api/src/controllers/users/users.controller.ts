@@ -44,12 +44,6 @@ export class UsersController {
     return this.usersService.getOneByEmail(email);
   }
 
-  @Permissions('user.get-one-by-username')
-  @Get('username/:username')
-  async getOneByUsername(@Param('username') username: string) {
-    return this.usersService.getOneByUsername(username);
-  }
-
   @Permissions('user.get-one-by-id')
   @Get('id/:idUser')
   async getOneById(@Param('idUser', ParseIntPipe) idUser: number) {

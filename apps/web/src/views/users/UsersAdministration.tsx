@@ -34,9 +34,8 @@ import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 import { getRoleLabel } from '@/utils/roleLabels';
 import tableStyles from '@core/styles/table.module.css';
 
-const emptyForm: UserFields = { username: '', email: '', name: '', lastname: '', ci: '' };
+const emptyForm: UserFields = { email: '', name: '', lastname: '', ci: '' };
 const labels = {
-  username: 'Usuario',
   email: 'Correo',
   name: 'Nombre',
   lastname: 'Apellido',
@@ -169,7 +168,6 @@ export default function UsersAdministration() {
     setForm(
       user
         ? {
-            username: user.username,
             email: user.email,
             name: user.name,
             lastname: user.lastname,
@@ -192,8 +190,8 @@ export default function UsersAdministration() {
     setDialogError(null);
     let repairedRoles = false;
     try {
-      const { username, email, name, lastname, ci } = form;
-      const fields = { username, email, name, lastname, ci };
+      const { email, name, lastname, ci } = form;
+      const fields = { email: email.trim().toLowerCase(), name, lastname, ci };
       if (editor.id === undefined && 'password' in form)
         await usersService.create({
           ...fields,
@@ -373,7 +371,6 @@ export default function UsersAdministration() {
                             <Typography>
                               {user.name} {user.lastname}
                             </Typography>
-                            <Typography variant='body2'>{user.username}</Typography>
                           </td>
                           <td>{user.email}</td>
                           <td>
@@ -539,7 +536,7 @@ export default function UsersAdministration() {
         <DialogContent>
           {dialogError && <Alert severity='error'>{dialogError}</Alert>}
           <Typography>
-            ¿Deseas {statusUser?.isActive ? 'desactivar' : 'activar'} la cuenta de {statusUser?.username}?
+            ¿Deseas {statusUser?.isActive ? 'desactivar' : 'activar'} la cuenta de {statusUser?.email}?
           </Typography>
           {statusUser?.isActive && (
             <Typography>La cuenta perderá el acceso a MEDISUR. Su información se conservará.</Typography>

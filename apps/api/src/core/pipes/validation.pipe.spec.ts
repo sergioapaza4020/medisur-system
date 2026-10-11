@@ -11,7 +11,6 @@ describe('HTTP validation', () => {
 
   it('requires at least one role in creation and assignment, preserving multiple roles', async () => {
     const user = {
-      username: 'ana',
       name: 'Ana',
       lastname: 'Pérez',
       email: 'ana@example.com',
@@ -53,7 +52,6 @@ describe('HTTP validation', () => {
     await expect(
       pipe.transform(
         {
-          username: 'ana',
           name: 'Ana',
           lastname: 'Pérez',
           email: 'ana@example.com',
@@ -67,13 +65,24 @@ describe('HTTP validation', () => {
 
   it('keeps login credentials and removes unknown properties', async () => {
     const result: unknown = await pipe.transform(
-      { username: 'test', password: 'secret', isAdmin: true },
+      { email: ' TEST@example.com ', password: 'secret', isAdmin: true, username: 'obsolete' },
       { type: 'body', metatype: LoginDto },
     );
-    expect(result).toEqual({ username: 'test', password: 'secret' });
+    expect(result).toEqual({ email: 'test@example.com', password: 'secret' });
     await expect(
-      pipe.transform({ username: 'test' }, { type: 'body', metatype: LoginDto }),
+      pipe.transform({ email: 'test@example.com' }, { type: 'body', metatype: LoginDto }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it.each([
+    { password: 'secret' },
+    { username: 'obsolete', password: 'secret' },
+    { email: 'invalid', password: 'secret' },
+    { email: '', password: 'secret' },
+  ])('rejects missing or invalid login email: %j', async (body) => {
+    await expect(pipe.transform(body, { type: 'body', metatype: LoginDto })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('defaults administrative lists to active and accepts all states', async () => {

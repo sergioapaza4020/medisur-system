@@ -1,9 +1,12 @@
+import { Transform } from 'class-transformer';
+import { transformEmail } from 'src/common/utils/normalize-email';
 import { ApiProperty } from '@nestjs/swagger';
 import {
   ArrayMinSize,
   ArrayUnique,
   IsArray,
   IsEmail,
+  MaxLength,
   IsNotEmpty,
   IsString,
   Matches,
@@ -11,18 +14,15 @@ import {
 
 export class UserCreateDto {
   @ApiProperty()
+  @Transform(transformEmail)
   @IsEmail()
+  @MaxLength(254)
   email: string;
 
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
   password: string;
-
-  @ApiProperty()
-  @IsString()
-  @Matches(/\S/)
-  username: string;
 
   @ApiProperty()
   @IsString()

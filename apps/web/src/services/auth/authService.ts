@@ -1,14 +1,26 @@
 import { apiClient } from '../http/axiosClient';
 
-import type { ApiResponse, AuthUser, LoginCredentials, LoginTokens } from '@/types/auth';
+import type { ApiResponse, AuthUser, LoginCredentials, LoginTokens, PatientRegistration } from '@/types/auth';
 import { clearTokens, getRefreshToken, saveTokens } from '@/utils/http/authCookies';
 
 export const authService = {
+  async register(patient: PatientRegistration): Promise<void> {
+    await apiClient.post('/auth/register', {
+      name: patient.name,
+      lastname: patient.lastname,
+      email: patient.email.trim().toLowerCase(),
+      ci: patient.ci,
+      password: patient.password,
+    });
+  },
   async login(credentials: LoginCredentials, remember = false): Promise<AuthUser> {
     clearTokens();
 
     try {
-      const { data } = await apiClient.post<ApiResponse<LoginTokens>>('/auth/login', credentials);
+      const { data } = await apiClient.post<ApiResponse<LoginTokens>>('/auth/login', {
+        email: credentials.email.trim().toLowerCase(),
+        password: credentials.password,
+      });
 
       saveTokens(data.data.accessToken, data.data.refreshToken, remember);
 

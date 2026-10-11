@@ -28,6 +28,9 @@ describe('UsersService', () => {
 
 describe('HU-USR-04 administration', () => {
   const qb = {
+    addSelect: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    getOne: jest.fn(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
@@ -54,10 +57,9 @@ describe('HU-USR-04 administration', () => {
     roles as unknown as RolesService,
   );
   const dto = {
-    username: 'ana',
     email: 'ana@example.com',
     name: 'Ana',
-    lastname: 'Pérez',
+    lastname: 'PÃ©rez',
     ci: '123',
     password: 'secret',
     roleNames: ['staff', ' STAFF '],
@@ -85,6 +87,7 @@ describe('HU-USR-04 administration', () => {
     expect(qb.take).toHaveBeenCalledWith(10);
     expect(qb.andWhere).toHaveBeenCalledWith('user.isActive = :isActive', { isActive: false });
     expect(qb.andWhere).toHaveBeenCalledWith(expect.any(String), { search: '%ana\\_\\%%' });
+    expect(qb.andWhere.mock.calls.flat().join(' ')).not.toContain('username');
     qb.andWhere.mockClear();
     await service.getAll(Object.assign(new UsersQueryDto(), { status: RecordStatus.ALL }));
     expect(qb.andWhere).not.toHaveBeenCalled();
@@ -99,8 +102,34 @@ describe('HU-USR-04 administration', () => {
     expect(await bcrypt.compare(dto.password, result.password)).toBe(true);
     expect(result.roles).toHaveLength(1);
     expect(repository.findOne).toHaveBeenCalledWith({
-      where: [{ email: dto.email }, { username: dto.username }, { ci: dto.ci }],
+      where: [{ email: dto.email }, { ci: dto.ci }],
     });
+  });
+
+  it('normalizes email consistently for creation, lookups, authentication and editing', async () => {
+    repository.findOne.mockResolvedValue(null);
+    roles.getOneByName.mockResolvedValue({ idRole: 1, name: 'STAFF' });
+    const created = await service.create({ ...dto, email: ' ANA@example.com ' }, 9);
+    expect(created.email).toBe(dto.email);
+    await service.getOneByEmail(' ANA@example.com ');
+    expect(repository.findOne).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { email: dto.email, isActive: true } }),
+    );
+    await service.getForAuthentication(' ANA@example.com ');
+    expect(qb.where).toHaveBeenCalledWith('user.email = :email AND user.isActive = :isActive', {
+      email: dto.email,
+      isActive: true,
+    });
+    expect(qb.addSelect).toHaveBeenCalledWith('user.password');
+    const user = Object.assign(new User(), { idUser: 1, roles: [{ name: 'STAFF' }] });
+    repository.findOne.mockResolvedValueOnce(user).mockResolvedValueOnce(null);
+    const result = await service.update(1, { email: ' EDITED@example.com ' }, 9);
+    expect(result.email).toBe('edited@example.com');
+    expect(result).not.toHaveProperty('username');
+    repository.findOne.mockResolvedValueOnce(user).mockResolvedValueOnce({ idUser: 2 });
+    await expect(service.update(1, { email: ' EDITED@example.com ' }, 9)).rejects.toThrow(
+      'email already exists',
+    );
   });
 
   it('rejects duplicate identities and unavailable roles before saving', async () => {

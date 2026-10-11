@@ -3,7 +3,6 @@ export const MEDISUR_PERMISSIONS = {
   user: [
     'get-all',
     'get-one-by-email',
-    'get-one-by-username',
     'get-one-by-id',
     'create',
     'update',

@@ -32,7 +32,7 @@ const FormLayoutsAlignment = () => {
               <Typography variant='h5'>Sign In</Typography>
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth label='Username' placeholder='johnDoe ' />
+              <TextField fullWidth label='Correo electrónico' type='email' placeholder='usuario@correo.com' />
             </Grid>
             <Grid item xs={12}>
               <TextField

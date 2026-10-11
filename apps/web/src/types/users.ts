@@ -2,7 +2,6 @@ import type { PaginatedResponse, PaginationQuery } from './pagination';
 
 export interface AdministrativeUser {
   idUser: number;
-  username: string;
   email: string;
   name: string;
   lastname: string;
@@ -11,7 +10,7 @@ export interface AdministrativeUser {
   roles: { idRole: number; name: string; isActive: boolean }[];
 }
 
-export type UserFields = Pick<AdministrativeUser, 'username' | 'email' | 'name' | 'lastname' | 'ci'>;
+export type UserFields = Pick<AdministrativeUser, 'email' | 'name' | 'lastname' | 'ci'>;
 export type CreateUser = UserFields & { password: string; roleNames: string[] };
 export type UpdateUser = Partial<UserFields>;
 export interface UsersQuery extends PaginationQuery {

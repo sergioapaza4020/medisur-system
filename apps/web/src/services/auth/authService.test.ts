@@ -24,7 +24,6 @@ vi.mock('js-cookie', () => ({
 const user = {
   idUser: 1,
   idSession: 1,
-  username: 'ana',
   name: 'Ana',
   email: 'ana@example.com',
   roles: ['STAFF'],
@@ -55,6 +54,26 @@ beforeEach(() => {
 });
 
 describe('MEDISUR authentication using the existing HTTP client', () => {
+  it('registers through the existing client with an explicit field allowlist and no session or privileged state', async () => {
+    apiClient.defaults.adapter = (config) => {
+      calls.push(config);
+      return Promise.resolve(success(config, { idUser: 1 }));
+    };
+    const patient = {
+      name: 'Ana',
+      lastname: 'Pérez',
+      email: 'ana@example.com',
+      ci: '123456',
+      password: 'Segura123',
+    };
+    await authService.register({ ...patient, roleNames: ['SUPERADMIN'], isActive: true } as typeof patient);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('/auth/register');
+    expect(JSON.parse(calls[0].data as string)).toEqual(patient);
+    expect(calls[0].withCredentials).toBe(true);
+    expect(cookies.size).toBe(0);
+    expect(setCookie).not.toHaveBeenCalled();
+  });
   it('submits credentials, saves tokens and restores the user and capabilities through /auth/me', async () => {
     apiClient.defaults.adapter = (config) => {
       calls.push(config);
@@ -67,9 +86,9 @@ describe('MEDISUR authentication using the existing HTTP client', () => {
         ),
       );
     };
-    await expect(authService.login({ username: 'ana', password: 'secret' }, true)).resolves.toEqual(user);
+    await expect(authService.login({ email: 'ana@example.com', password: 'secret' }, true)).resolves.toEqual(user);
     expect(calls.map((c) => c.url)).toEqual(['/auth/login', '/auth/me']);
-    expect(JSON.parse(calls[0].data as string)).toEqual({ username: 'ana', password: 'secret' });
+    expect(JSON.parse(calls[0].data as string)).toEqual({ email: 'ana@example.com', password: 'secret' });
     expect(calls[1].headers.Authorization).toBe('Bearer access');
     expect(getAccessToken()).toBe('access');
     expect(setCookie).toHaveBeenCalledWith(
@@ -92,7 +111,9 @@ describe('MEDISUR authentication using the existing HTTP client', () => {
         }),
       );
     };
-    const error = await authService.login({ username: 'ana', password: 'wrong' }).catch((error: unknown) => error);
+    const error = await authService
+      .login({ email: 'ana@example.com', password: 'wrong' })
+      .catch((error: unknown) => error);
     expect(getApiErrorMessage(error)).toBe('Credenciales inválidas');
     expect(calls.map((c) => c.url)).toEqual(['/auth/login']);
     expect(getAccessToken()).toBeUndefined();

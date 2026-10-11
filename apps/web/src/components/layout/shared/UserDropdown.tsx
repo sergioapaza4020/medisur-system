@@ -80,7 +80,7 @@ const UserDropdown = () => {
         <Typography
           sx={{ display: { xs: 'none', md: 'block' }, fontWeight: 600, color: 'text.primary', fontSize: '0.875rem' }}
         >
-          {user?.name || user?.username || 'Mi cuenta'}
+          {user?.name || user?.email || 'Mi cuenta'}
         </Typography>
         <i aria-hidden='true' className={open ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'} />
       </ButtonBase>
@@ -114,9 +114,7 @@ const UserDropdown = () => {
                     <Avatar sx={{ width: 48, height: 48, bgcolor: 'primary.lighterOpacity', color: 'primary.main' }}>
                       <i aria-hidden='true' className='ri-user-line' />
                     </Avatar>
-                    <Typography sx={{ fontWeight: 600, color: 'text.primary' }}>
-                      {user?.name || user?.username}
-                    </Typography>
+                    <Typography sx={{ fontWeight: 600, color: 'text.primary' }}>{user?.name || user?.email}</Typography>
                   </Box>
                   <Divider sx={{ mx: 4 }} />
                   <MenuList

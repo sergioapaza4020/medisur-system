@@ -77,13 +77,13 @@ describe('ResponseInterceptor', () => {
     const createdAt = new Date('2026-01-01');
     const entity = Object.assign(new User(), { idUser: 1, password: 'hash', createdAt });
     const result = await responseFor({
-      data: { user: entity, sessions: [{ user: { password: 'hash', username: 'test' } }] },
+      data: { user: entity, sessions: [{ user: { password: 'hash', email: 'test@example.com' } }] },
     });
     expect(result).toEqual({
       status: true,
       statusCode: 200,
       message: undefined,
-      data: { user: { idUser: 1, createdAt }, sessions: [{ user: { username: 'test' } }] },
+      data: { user: { idUser: 1, createdAt }, sessions: [{ user: { email: 'test@example.com' } }] },
     });
     expect(entity.password).toBe('hash');
     expect(JSON.stringify(result)).not.toContain('password');

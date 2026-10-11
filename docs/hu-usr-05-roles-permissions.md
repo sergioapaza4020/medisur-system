@@ -27,7 +27,7 @@ apps/api/src/database/seeders/access-control.catalog.ts.
 
 | Recurso    | Acciones                                                                                                        |
 | ---------- | --------------------------------------------------------------------------------------------------------------- |
-| user       | get-all, get-one-by-email, get-one-by-username, get-one-by-id, create, update, delete, reactivate, assign-roles |
+| user       | get-all, get-one-by-email, get-one-by-id, create, update, delete, reactivate, assign-roles |
 | role       | get-all, get-one-by-name, get-one-by-id, create, update, delete, reactivate, assign-permissions                 |
 | permission | get-all, get-one-by-name, get-one-by-id, create, update, delete, reactivate                                     |
 | session    | get-all, revoke-one, revoke-all                                                                                 |

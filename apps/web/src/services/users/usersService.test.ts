@@ -29,7 +29,6 @@ describe('User administration with the shared HTTP client', () => {
 
   it('uses the existing administrative endpoints and propagates API failures', async () => {
     const user = {
-      username: 'ana',
       name: 'Ana',
       lastname: 'Pérez',
       email: 'ana@example.com',

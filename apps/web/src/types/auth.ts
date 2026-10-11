@@ -9,15 +9,20 @@ export interface AuthUser {
   idUser: number;
   idSession: number;
   name: string;
-  username: string;
   email: string;
   roles: string[];
   permissions: string[];
 }
 
 export interface LoginCredentials {
-  username: string;
+  email: string;
   password: string;
+}
+
+export interface PatientRegistration extends LoginCredentials {
+  name: string;
+  lastname: string;
+  ci: string;
 }
 
 export interface LoginTokens {

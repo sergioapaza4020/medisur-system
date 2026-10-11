@@ -1,9 +1,10 @@
+import { normalizeEmail } from 'src/common/utils/normalize-email';
 import { UserUpdateDto } from 'src/dtos/users/users-update.dto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserCreateDto } from 'src/dtos/users/users.dto';
 import { User } from 'src/entities/users/users.entity';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { UsersQueryDto } from 'src/dtos/users/users-query.dto';
 import { statusFilter } from 'src/common/utils/status-filter';
 import { paginate } from 'src/common/utils/paginate';
@@ -35,21 +36,18 @@ export class UsersService {
     if (filter.isActive !== undefined) qb.andWhere('user.isActive = :isActive', filter);
     if (query.search?.trim()) {
       qb.andWhere(
-        '(user.name ILIKE :search OR user.lastname ILIKE :search OR user.username ILIKE :search OR user.email ILIKE :search OR user.ci ILIKE :search)',
+        '(user.name ILIKE :search OR user.lastname ILIKE :search OR user.email ILIKE :search OR user.ci ILIKE :search)',
         { search: `%${query.search.trim().replace(/[\\%_]/g, '\\$&')}%` },
       );
     }
     return paginate(qb, query);
   }
 
-  async create(userCreateDto: UserCreateDto, authorId: number): Promise<User> {
+  async create(userCreateDto: UserCreateDto, authorId?: number): Promise<User> {
+    userCreateDto = { ...userCreateDto, email: normalizeEmail(userCreateDto.email) };
     this.assertHasRoles(userCreateDto.roleNames);
     const user = await this.userRepository.findOne({
-      where: [
-        { email: userCreateDto.email },
-        { username: userCreateDto.username },
-        { ci: userCreateDto.ci },
-      ],
+      where: [{ email: userCreateDto.email }, { ci: userCreateDto.ci }],
     });
     if (user) throw new BadRequestException('User already exists');
 
@@ -69,13 +67,22 @@ export class UsersService {
       password: hash,
       roles,
     });
-    userCreated.createdBy = authorId;
-    return this.userRepository.save(userCreated);
+    if (authorId !== undefined) userCreated.createdBy = authorId;
+    try {
+      return await this.userRepository.save(userCreated);
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        (error.driverError as { code?: string }).code === '23505'
+      )
+        throw new BadRequestException('User already exists');
+      throw error;
+    }
   }
 
   async getOneByEmail(email: string) {
     return this.userRepository.findOne({
-      where: { email, isActive: true },
+      where: { email: normalizeEmail(email), isActive: true },
       relations: {
         roles: {
           permissions: true,
@@ -84,25 +91,14 @@ export class UsersService {
     });
   }
 
-  async getOneByUsername(username: string) {
-    return this.userRepository.findOne({
-      where: { username, isActive: true },
-      relations: {
-        roles: {
-          permissions: true,
-        },
-      },
-    });
-  }
-
-  async getForAuthentication(username: string) {
+  async getForAuthentication(email: string) {
     return this.userRepository
       .createQueryBuilder('user')
       .addSelect('user.password')
       .leftJoinAndSelect('user.roles', 'roles')
       .leftJoinAndSelect('roles.permissions', 'permissions')
-      .where('user.username = :username AND user.isActive = :isActive', {
-        username,
+      .where('user.email = :email AND user.isActive = :isActive', {
+        email: normalizeEmail(email),
         isActive: true,
       })
       .getOne();
@@ -183,10 +179,11 @@ export class UsersService {
   }
 
   async update(idUser: number, dto: UserUpdateDto, authorId: number) {
+    if (dto.email !== undefined) dto = { ...dto, email: normalizeEmail(dto.email) };
     const user = await this.userRepository.findOne({ where: { idUser }, relations: ['roles'] });
     if (!user) throw new BadRequestException('User not found');
     this.assertHasRoles(user.roles);
-    for (const field of ['email', 'username', 'ci'] as const) {
+    for (const field of ['email', 'ci'] as const) {
       if (dto[field] !== undefined) {
         const duplicate = await this.userRepository.findOne({ where: { [field]: dto[field] } });
         if (duplicate && duplicate.idUser !== idUser)
@@ -194,14 +191,13 @@ export class UsersService {
       }
     }
     // Explicit fields keep role assignment behind its own permission.
-    const { email, username, name, lastname, ci } = dto;
-    this.userRepository.merge(user, { email, username, name, lastname, ci });
+    const { email, name, lastname, ci } = dto;
+    this.userRepository.merge(user, { email, name, lastname, ci });
     user.updatedBy = authorId;
     const saved = await this.userRepository.save(user);
     return {
       idUser: saved.idUser,
       email: saved.email,
-      username: saved.username,
       name: saved.name,
       lastname: saved.lastname,
       ci: saved.ci,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import Link from 'next/link';
@@ -25,27 +25,43 @@ import MissionCarousel from './MissionCarousel';
 import ModeDropdown from '@/components/layout/shared/ModeDropdown';
 import { authService } from '@/services/auth/authService';
 import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
+import { consumeRegistrationNotice } from '@/utils/registrationNotice';
 
 // Reserved for a future local medical photograph; no remote asset is required.
 const medicalImage: string | undefined = undefined;
 
 const Login = ({ mode }: { mode: Mode }) => {
   const [isPasswordShown, setIsPasswordShown] = useState(false);
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+
+  useEffect(() => {
+    consumeRegistrationNotice().then((registeredEmail) => {
+      if (registeredEmail) {
+        setEmail(registeredEmail);
+        setPassword('');
+        setRegistrationSuccess(true);
+      }
+    });
+  }, []);
 
   const handleClickShowPassword = () => setIsPasswordShown((show) => !show);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitInFlight.current) return;
-    if (!username.trim() || !password) {
-      setError('Ingresa tu usuario y contraseña');
+    if (!email.trim() || !password) {
+      setError('Ingresa tu correo electrónico y contraseña');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || email.trim().length > 254) {
+      setError('Ingresa un correo electrónico válido');
       return;
     }
     // Lock synchronously: repeated submits can arrive before React renders the loading state.
@@ -53,7 +69,7 @@ const Login = ({ mode }: { mode: Mode }) => {
     setIsSubmitting(true);
     setError(null);
     try {
-      await authService.login({ username: username.trim(), password }, remember);
+      await authService.login({ email: email.trim().toLowerCase(), password }, remember);
       setPassword('');
       router.replace('/dashboard');
     } catch (error) {
@@ -174,17 +190,21 @@ const Login = ({ mode }: { mode: Mode }) => {
                 '& .MuiInputLabel-root': { color: 'text.secondary' },
               }}
             >
+              {registrationSuccess && (
+                <Alert severity='success'>Cuenta creada correctamente. Inicia sesión para continuar.</Alert>
+              )}
               {error && <Alert severity='error'>{error}</Alert>}
               <TextField
                 autoFocus
                 fullWidth
-                id='login-username'
-                name='username'
-                autoComplete='username'
-                label='Usuario'
-                placeholder='Ingresa tu nombre de usuario'
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
+                id='login-email'
+                name='email'
+                autoComplete='email'
+                label='Correo electrónico'
+                placeholder='usuario@correo.com'
+                type='email'
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
                 disabled={isSubmitting}
                 required
                 InputLabelProps={{ shrink: true }}

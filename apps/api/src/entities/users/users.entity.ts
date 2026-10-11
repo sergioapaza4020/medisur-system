@@ -1,10 +1,19 @@
-import { Column, Entity, JoinTable, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Check,
+  Column,
+  Entity,
+  JoinTable,
+  ManyToMany,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { Role } from '../roles/roles.entity';
 import { Exclude } from 'class-transformer';
 import { BaseEntity } from '@common/entities/base.entity';
 import { UserSession } from '../user-sessions/user-sessions.entity';
 
 @Entity('users')
+@Check('CHK_users_email_normalized', `"email" = lower(btrim("email")) AND "email" <> ''`)
 export class User extends BaseEntity {
   @PrimaryGeneratedColumn({ name: 'id_user' })
   idUser: number;
@@ -18,9 +27,6 @@ export class User extends BaseEntity {
 
   @Column({ nullable: true, name: 'avatar' })
   avatar: string;
-
-  @Column({ unique: true, name: 'username' })
-  username: string;
 
   @Column({ name: 'name' })
   name: string;

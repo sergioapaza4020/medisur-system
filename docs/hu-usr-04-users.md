@@ -75,7 +75,7 @@ modifica el autoregistro.
 
 La consulta anteriormente devolvía todos los registros sin paginación. Los consumidores que necesiten recorrer la lista deben solicitar sus páginas. No se encontró un paginador funcional previo; se completó la consulta existente `getManyAndCount` mediante `skip`/`take` y se utilizó `TablePagination` de MUI con el tema ya configurado.
 
-El detalle administrativo no modifica `UsersService.getOneById`, que conserva la restricción de usuario activo para autenticación. Email, username y documento se validan contra registros existentes, incluidos los inactivos. Las restricciones únicas existentes mantienen la integridad en la base de datos. Contraseñas continúan cifradas con bcrypt y excluidas de las respuestas.
+El detalle administrativo no modifica `UsersService.getOneById`, que conserva la restricción de usuario activo para autenticación. Correo normalizado y documento se validan contra registros existentes, incluidos los inactivos. Las restricciones únicas existentes mantienen la integridad en la base de datos. Contraseñas continúan cifradas con bcrypt y excluidas de las respuestas.
 
 ## Archivos
 

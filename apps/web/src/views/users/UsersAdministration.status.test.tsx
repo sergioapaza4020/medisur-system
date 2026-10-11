@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn().mockResolvedValue({ data: [], meta: { totalPages: 1 } }),
   target: null as AdministrativeUser | null,
   editor: null as { id?: number; roleNames?: string[] } | null,
-  form: { username: 'ana', email: 'ana@example.com', name: 'Ana', lastname: 'Pérez', ci: '123' } as
+  form: { email: 'ana@example.com', name: 'Ana', lastname: 'Pérez', ci: '123' } as
     (UserFields & { roleNames?: string[] }) | CreateUser,
   detail: null as AdministrativeUser | null,
   setForm: vi.fn(),
@@ -205,7 +205,7 @@ beforeEach(() => {
   mocks.roleField = null;
   mocks.detail = null;
   mocks.submit = null;
-  mocks.form = { username: 'ana', email: 'ana@example.com', name: 'Ana', lastname: 'Pérez', ci: '123' };
+  mocks.form = { email: 'ana@example.com', name: 'Ana', lastname: 'Pérez', ci: '123' };
   mocks.buttons.clear();
 });
 
@@ -222,10 +222,9 @@ describe('User list with shared pagination', () => {
           : [
               {
                 idUser,
-                username: `usuario-${idUser}`,
                 name: 'Ana',
                 lastname: 'Pérez',
-                email: 'ana@example.com',
+                email: `user-${idUser}@example.com`,
                 ci: '123',
                 isActive: false,
                 roles: [],
@@ -245,17 +244,17 @@ describe('User list with shared pagination', () => {
       mocks.effects = [];
       return renderToStaticMarkup(<UsersAdministration />);
     };
-    expect(render()).toContain('usuario-1');
+    expect(render()).toContain('user-1@example.com');
     mocks.pagination?.onChange({ page: 2, limit: 10 });
     expect(render()).toContain('Cargando usuarios');
-    expect(render()).not.toContain('usuario-1');
+    expect(render()).not.toContain('user-1@example.com');
     mocks.list.mockResolvedValueOnce(makePage(2, 10, 11));
     mocks.runEffects = true;
     render();
     mocks.effects[0]();
     await vi.waitFor(() => expect(mocks.completed?.query).toBe(mocks.query));
     expect(mocks.list).toHaveBeenLastCalledWith({ page: 2, limit: 10, status: 'inactive', search: 'Ana' });
-    expect(render()).toContain('usuario-11');
+    expect(render()).toContain('user-11@example.com');
     expect(render()).toContain('11–20 de 57');
     mocks.pagination?.onChange({ page: 1, limit: 25 });
     expect(render()).toContain('Cargando usuarios');
@@ -467,7 +466,6 @@ describe('Administrative credentials', () => {
     expect(mocks.submit).not.toBeNull();
     await mocks.submit?.();
     expect(mocks.update).toHaveBeenCalledWith(2, {
-      username: 'ana',
       email: 'ana@example.com',
       name: 'Ana',
       lastname: 'Pérez',
