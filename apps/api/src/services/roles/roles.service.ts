@@ -6,6 +6,11 @@ import { Repository } from 'typeorm';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RoleUpdateDto } from 'src/dtos/roles/role-update.dto';
 import { Permission } from 'src/entities/permissions/permissions.entity';
+import { MEDISUR_ROLES } from 'src/database/seeders/access-control.catalog';
+import { RolesQueryDto } from 'src/dtos/roles/roles-query.dto';
+import { RoleAdministrativeUpdateDto } from 'src/dtos/roles/role-administration.dto';
+import { paginate } from 'src/common/utils/paginate';
+import { statusFilter } from 'src/common/utils/status-filter';
 
 @Injectable()
 export class RolesService {
@@ -13,6 +18,10 @@ export class RolesService {
     @InjectRepository(Role) private readonly roleRepository: Repository<Role>,
     private readonly permissionsService: PermissionsService,
   ) {}
+
+  private isSystemRole(role: Role): boolean {
+    return MEDISUR_ROLES.some((base) => base.name === role.name);
+  }
 
   async create(roleCreateDto: RoleCreateDto, authorId: number): Promise<Role> {
     const normalizedName = roleCreateDto.name.toUpperCase().trim().replace(/\s+/g, ' ');
@@ -42,12 +51,37 @@ export class RolesService {
     return this.roleRepository.save(roleCreated);
   }
 
-  async getAll(): Promise<Role[]> {
-    return this.roleRepository.find({
-      relations: {
-        permissions: true,
-      },
-    });
+  async getAll(query: RolesQueryDto = new RolesQueryDto()) {
+    const qb = this.roleRepository
+      .createQueryBuilder('role')
+      .leftJoinAndSelect('role.permissions', 'permissions')
+      .orderBy('role.idRole', 'ASC');
+    const filter = statusFilter(query.status);
+    if (filter.isActive !== undefined) qb.andWhere('role.isActive = :isActive', filter);
+    if (query.search?.trim())
+      qb.andWhere('(role.name ILIKE :search OR role.description ILIKE :search)', {
+        search: '%' + query.search.trim().replace(/[\\%_]/g, (character) => '\\' + character) + '%',
+      });
+    const result = await paginate(qb, query);
+    return {
+      ...result,
+      data: result.data.map((role) => ({
+        idRole: role.idRole,
+        name: role.name,
+        description: role.description,
+        isActive: role.isActive,
+        isSystem: this.isSystemRole(role),
+        permissionCount: role.permissions?.length ?? 0,
+      })),
+    };
+  }
+
+  async updateAdministrative(idRole: number, dto: RoleAdministrativeUpdateDto, authorId: number) {
+    const role = await this.roleRepository.findOne({ where: { idRole } });
+    if (!role) throw new BadRequestException('Role not found');
+    if (dto.description !== undefined) role.description = dto.description.trim() || null;
+    role.updatedBy = authorId;
+    return this.roleRepository.save(role);
   }
 
   async getOneByName(name: string) {
@@ -102,6 +136,9 @@ export class RolesService {
 
     const normalizedName = roleUpdateDto.name.toUpperCase().trim().replace(/\s+/g, ' ');
 
+    if (normalizedName !== role.name)
+      throw new BadRequestException('El código interno del rol no puede modificarse');
+
     const existingRole = await this.roleRepository.findOne({
       where: {
         name: normalizedName,
@@ -138,6 +175,8 @@ export class RolesService {
       where: { idRole, isActive: true },
     });
     if (!role) throw new BadRequestException('Role not found');
+    if (this.isSystemRole(role))
+      throw new BadRequestException('Los roles base no pueden desactivarse');
     role.isActive = false;
     role.deletedBy = authorId;
     role.updatedBy = authorId;

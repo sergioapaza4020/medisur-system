@@ -38,6 +38,7 @@ describe('Permission enforcement over HTTP', () => {
     create: jest.fn().mockResolvedValue({}),
     update: jest.fn().mockResolvedValue({}),
     assignPermissions: jest.fn().mockResolvedValue({}),
+    updateAdministrative: jest.fn().mockResolvedValue({}),
     getAdministrativeDetail: jest.fn().mockResolvedValue({}),
     getOneByEmail: jest.fn().mockResolvedValue({}),
     getOneByUsername: jest.fn().mockResolvedValue({}),
@@ -108,7 +109,7 @@ describe('Permission enforcement over HTTP', () => {
   it('cannot assign permissions through role create/update without the assignment grant', async () => {
     const body = { name: 'STAFF', permissionNames: ['user.create'] };
     capabilities.permissions = ['role.create', 'role.update'];
-    await request(server).post('/roles').auth(token, { type: 'bearer' }).send(body).expect(403);
+    await request(server).post('/roles').auth(token, { type: 'bearer' }).send(body).expect(400);
     await request(server).put('/roles/1').auth(token, { type: 'bearer' }).send(body).expect(403);
     await request(server)
       .patch('/roles/assign-permissions/1')
@@ -118,13 +119,83 @@ describe('Permission enforcement over HTTP', () => {
     expect(service.create).not.toHaveBeenCalled();
     expect(service.update).not.toHaveBeenCalled();
     capabilities.permissions.push('role.assign-permissions');
-    await request(server).post('/roles').auth(token, { type: 'bearer' }).send(body).expect(201);
+    await request(server).post('/roles').auth(token, { type: 'bearer' }).send(body).expect(400);
     await request(server).put('/roles/1').auth(token, { type: 'bearer' }).send(body).expect(200);
     await request(server)
       .patch('/roles/assign-permissions/1')
       .auth(token, { type: 'bearer' })
       .send({ permissionNames: ['user.create'] })
       .expect(200);
+  });
+
+  it('creates and edits administrative roles with their own grants, without requiring or assigning permissions', async () => {
+    const body = { name: 'RECEPTION', description: 'Recepción' };
+    await request(server).post('/roles').send(body).expect(401);
+    await request(server).post('/roles').auth(token, { type: 'bearer' }).send(body).expect(403);
+    capabilities.permissions = ['role.create'];
+    await request(server).post('/roles').auth(token, { type: 'bearer' }).send(body).expect(201);
+    expect(service.create).toHaveBeenCalledWith({ ...body, permissionNames: [] }, 1);
+    capabilities.permissions = ['role.update'];
+    await request(server)
+      .patch('/roles/5')
+      .auth(token, { type: 'bearer' })
+      .send({ description: 'Actualizada' })
+      .expect(200);
+    expect(service.updateAdministrative).toHaveBeenCalledWith(5, { description: 'Actualizada' }, 1);
+    for (const forbidden of [
+      { permissionNames: ['user.get-all'] },
+      { name: 'SUPERADMIN' },
+      { isActive: false },
+      { description: null },
+    ]) {
+      await request(server)
+        .patch('/roles/5')
+        .auth(token, { type: 'bearer' })
+        .send(forbidden)
+        .expect(400);
+    }
+    expect(service.updateAdministrative).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['patch', '/roles/5', 'role.update', { description: 'Actualizada' }],
+    ['delete', '/roles/5', 'role.delete', {}],
+    ['patch', '/roles/reactivate/5', 'role.reactivate', {}],
+  ] as const)(
+    'enforces direct %s %s by permissions regardless of the actor role',
+    async (method, path, permission, body) => {
+      await request(server)[method](path).send(body).expect(401);
+      await request(server)[method](path).auth(token, { type: 'bearer' }).send(body).expect(403);
+      capabilities.permissions = [permission];
+      await request(server)[method](path).auth(token, { type: 'bearer' }).send(body).expect(200);
+    },
+  );
+
+  it('validates the common pagination and role administrative inputs', async () => {
+    capabilities.permissions = ['role.get-all', 'role.create'];
+    for (const query of ['page=0', 'limit=101', 'status=invalid', 'search=' + 'a'.repeat(201)]) {
+      await request(server)
+        .get('/roles?' + query)
+        .auth(token, { type: 'bearer' })
+        .expect(400);
+    }
+    for (const body of [
+      { name: '   ' },
+      { name: 'a'.repeat(101) },
+      { name: 'CUSTOM', description: 'a'.repeat(501) },
+      { name: 'CUSTOM', isActive: false },
+    ]) {
+      await request(server).post('/roles').auth(token, { type: 'bearer' }).send(body).expect(400);
+    }
+    expect(service.getAll).not.toHaveBeenCalled();
+    expect(service.create).not.toHaveBeenCalled();
+    await request(server)
+      .get('/roles?page=2&limit=25&status=inactive&search=Recepción')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.getAll).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2, limit: 25, status: 'inactive', search: 'Recepción' }),
+    );
   });
 
   it('rejects invalid assignment arrays before reaching the service', async () => {

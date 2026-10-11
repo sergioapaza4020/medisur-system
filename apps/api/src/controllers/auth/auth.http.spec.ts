@@ -192,6 +192,31 @@ describe('HU-USR-01 authentication over HTTP', () => {
       .expect(200);
   });
 
+  it('removes and restores live capabilities when an assigned role is deactivated and reactivated', async () => {
+    user.roles[0].permissions = [{ name: 'role.get-all', isActive: true } as Permission];
+    const tokens = await login();
+    await request(server)
+      .get('/api/roles')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .expect(200);
+    user.roles[0].isActive = false;
+    await request(server)
+      .get('/api/roles')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .expect(403);
+    const current = await request(server)
+      .get('/api/auth/me')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .expect(200);
+    expect(current.body as unknown).toMatchObject({ data: { roles: [], permissions: [] } });
+    expect(user.roles).toHaveLength(1);
+    user.roles[0].isActive = true;
+    await request(server)
+      .get('/api/roles')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .expect(200);
+  });
+
   it('renews access and revokes both access and refresh after logout', async () => {
     const tokens = await login();
     const renewed = await request(server)

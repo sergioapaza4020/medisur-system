@@ -67,6 +67,11 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
             Usuarios
           </MenuItem>
         )}
+        {hasPermission('role.get-all') && (
+          <MenuItem href='/dashboard/roles' icon={<i className='ri-shield-user-line' />}>
+            Roles
+          </MenuItem>
+        )}
         <MenuSection label='Misc'>
           <MenuItem href='/dashboard/account-settings' icon={<i className='ri-user-settings-line' />}>
             Configuraciones de cuenta
