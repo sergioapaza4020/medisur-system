@@ -10,6 +10,7 @@ import { RolesService } from 'src/services/roles/roles.service';
 import { PermissionsService } from 'src/services/permissions/permissions.service';
 import { AuthService } from 'src/services/auth/auth.service';
 import { Role } from 'src/entities/roles/roles.entity';
+import { Permission } from 'src/entities/permissions/permissions.entity';
 import { MEDISUR_ROLES } from 'src/database/seeders/access-control.catalog';
 import { JwtStrategy } from 'src/core/strategies/jwt/jwt.strategy';
 import { JwtAuthGuard } from 'src/core/guards/auth/auth.guard';
@@ -24,6 +25,7 @@ describe('HU-USR-06 roles over HTTP', () => {
   let previousSecret: string | undefined;
   let roles: Role[];
   const actor = { idUser: 7, idSession: 1, roles: ['STAFF'], permissions: [] as string[] };
+  const getPermission = jest.fn();
   const repository = {
     findOne: ({ where }: { where: { idRole?: number; name?: string; isActive?: boolean } }) =>
       Promise.resolve(
@@ -53,7 +55,7 @@ describe('HU-USR-06 roles over HTTP', () => {
         RolesService,
         JwtStrategy,
         { provide: getRepositoryToken(Role), useValue: repository },
-        { provide: PermissionsService, useValue: { getOneByName: jest.fn() } },
+        { provide: PermissionsService, useValue: { getOneByName: getPermission } },
         { provide: AuthService, useValue: { getSession: () => Promise.resolve(actor) } },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },
@@ -70,6 +72,18 @@ describe('HU-USR-06 roles over HTTP', () => {
     );
   });
   beforeEach(() => {
+    getPermission.mockReset();
+    getPermission.mockImplementation((name: string) =>
+      Promise.resolve(
+        ['user.get-all', 'user.create', 'role.get-all'].includes(name)
+          ? Object.assign(new Permission(), {
+              idPermission: name === 'user.create' ? 2 : 1,
+              name,
+              isActive: true,
+            })
+          : null,
+      ),
+    );
     roles = MEDISUR_ROLES.map((role, index) =>
       Object.assign(new Role(), role, { idRole: index + 1, isActive: true, permissions: [] }),
     );
@@ -85,6 +99,34 @@ describe('HU-USR-06 roles over HTTP', () => {
     await app?.close();
     if (previousSecret === undefined) delete process.env.JWT_ACCESS_SECRET;
     else process.env.JWT_ACCESS_SECRET = previousSecret;
+  });
+
+  it('persists multiple assignments, withdrawal and empty replacements without changing base codes or granting implicit clinical access', async () => {
+    actor.permissions.push('role.get-one-by-id');
+    const replace = (permissionNames: string[]) =>
+      request(server)
+        .put('/roles/assign-permissions/1')
+        .auth(token, { type: 'bearer' })
+        .send({ permissionNames });
+    await replace(['user.get-all', 'user.create']).expect(200);
+    const detail = await request(server)
+      .get('/roles/id/1')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(
+      (detail.body as { data: Role }).data.permissions.map((permission) => permission.name),
+    ).toEqual(['user.get-all', 'user.create']);
+    await replace(['user.create']).expect(200);
+    expect(roles[0].permissions.map((permission) => permission.name)).toEqual(['user.create']);
+    await replace(['role.get-all', 'clinical.global']).expect(400);
+    expect(roles[0].permissions.map((permission) => permission.name)).toEqual(['user.create']);
+    expect(roles[0].name).toBe('SUPERADMIN');
+    await replace([]).expect(200);
+    expect(roles[0].permissions).toEqual([]);
+    roles[0].isActive = false;
+    await replace(['user.create']).expect(400);
+    await request(server).get('/roles/id/1').auth(token, { type: 'bearer' }).expect(200);
+    expect(roles[0].permissions).toEqual([]);
   });
 
   it('creates, rejects duplicates, edits descriptions and logically deactivates/reactivates without granting capabilities', async () => {

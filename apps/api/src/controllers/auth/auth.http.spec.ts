@@ -22,6 +22,9 @@ import { createValidationPipe } from '@core/pipes/validation.pipe';
 import { User } from 'src/entities/users/users.entity';
 import { UserSession } from 'src/entities/user-sessions/user-sessions.entity';
 import { Permission } from 'src/entities/permissions/permissions.entity';
+import { Role } from 'src/entities/roles/roles.entity';
+import { Repository } from 'typeorm';
+import { PermissionsService } from 'src/services/permissions/permissions.service';
 
 interface Envelope<T> {
   data: T;
@@ -45,6 +48,7 @@ describe('HU-USR-01 authentication over HTTP', () => {
     'JWT_ACCESS_SECRET_EXPIRES_IN',
     'JWT_ACCESS_REFRESH_EXPIRES_IN',
   ];
+  const roleOperations = { getAll: () => [], assignPermissions: jest.fn() };
   const sessionRepository = {
     create: (value: Partial<UserSession>) =>
       Object.assign(new UserSession(), value, { isActive: true }),
@@ -94,7 +98,7 @@ describe('HU-USR-01 authentication over HTTP', () => {
               Promise.resolve(idUser === user.idUser && user.isActive ? user : null),
           },
         },
-        { provide: RolesService, useValue: { getAll: () => [] } },
+        { provide: RolesService, useValue: roleOperations },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },
       ],
@@ -215,6 +219,61 @@ describe('HU-USR-01 authentication over HTTP', () => {
       .get('/api/roles')
       .auth(tokens.accessToken, { type: 'bearer' })
       .expect(200);
+  });
+
+  it('applies batch grants and withdrawals to an existing session without implicit SUPERADMIN or clinical capabilities', async () => {
+    const assignedRole = user.roles[0];
+    assignedRole.idRole = 1;
+    assignedRole.name = 'SUPERADMIN';
+    const assignment = Object.assign(new Permission(), {
+      name: 'role.assign-permissions',
+      isActive: true,
+    });
+    const read = Object.assign(new Permission(), { name: 'role.get-all', isActive: true });
+    assignedRole.permissions = [assignment];
+    const roles = new RolesService(
+      {
+        findOne: () => Promise.resolve(assignedRole),
+        save: (role: Role) => Promise.resolve(role),
+      } as unknown as Repository<Role>,
+      {
+        getOneByName: (name: string) => Promise.resolve(name === read.name ? read : null),
+      } as PermissionsService,
+    );
+    roleOperations.assignPermissions.mockImplementation(
+      (id: number, names: string[], author: number, replace: boolean) =>
+        roles.assignPermissions(id, names, author, replace),
+    );
+    const tokens = await login();
+    await request(server)
+      .get('/api/roles')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .expect(403);
+    await request(server)
+      .put('/api/roles/assign-permissions/1')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .send({ permissionNames: [assignment.name, read.name] })
+      .expect(200);
+    await request(server)
+      .get('/api/roles')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .expect(200);
+    await request(server)
+      .put('/api/roles/assign-permissions/1')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .send({ permissionNames: [assignment.name] })
+      .expect(200);
+    await request(server)
+      .get('/api/roles')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .expect(403);
+    const current = await request(server)
+      .get('/api/auth/me')
+      .auth(tokens.accessToken, { type: 'bearer' })
+      .expect(200);
+    expect(current.body as unknown).toMatchObject({
+      data: { roles: ['SUPERADMIN'], permissions: [assignment.name] },
+    });
   });
 
   it('renews access and revokes both access and refresh after logout', async () => {
