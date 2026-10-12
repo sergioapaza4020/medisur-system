@@ -18,6 +18,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Permissions } from '@core/decorators/permissions/permissions.decorator';
 import { UsersAssignRolesDto } from 'src/dtos/users/users-assign-roles.dto';
 import { UserCreateDto } from 'src/dtos/users/users.dto';
+import { RegisterPatientDto } from 'src/dtos/auth/register-patient.dto';
 import { UsersService } from 'src/services/users/users.service';
 
 @ApiBearerAuth('access-token')
@@ -25,6 +26,22 @@ import { UsersService } from 'src/services/users/users.service';
 @ApiTags('Users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Permissions('user.create-patient')
+  @Get('patient-registration')
+  async searchForPatientRegistration(@Query() query: UsersQueryDto) {
+    return this.usersService.searchForPatientRegistration(query);
+  }
+
+  @Permissions('user.create-patient')
+  @Post('patient-registration')
+  async createPatient(@Body() dto: RegisterPatientDto, @CurrentUser() user: JwtPayload) {
+    const patient = await this.usersService.createPatient(dto, user.idUser);
+    return {
+      message: 'Paciente registrado correctamente',
+      data: { idUser: patient.idUser, email: patient.email },
+    };
+  }
 
   @Permissions('user.get-all')
   @Get()

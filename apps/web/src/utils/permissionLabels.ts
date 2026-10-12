@@ -6,6 +6,7 @@ const domains: Record<string, string> = {
   session: 'Sesiones',
 };
 const actions: Record<string, string> = {
+  'create-patient': 'Registrar pacientes',
   'get-all': 'Consultar listado',
   'get-one-by-id': 'Consultar por identificador',
   'get-one-by-name': 'Consultar por nombre',

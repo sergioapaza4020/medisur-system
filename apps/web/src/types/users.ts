@@ -1,5 +1,11 @@
 import type { PaginatedResponse, PaginationQuery } from './pagination';
 
+export type PatientRegistrationMatch = Pick<
+  AdministrativeUser,
+  'idUser' | 'email' | 'name' | 'lastname' | 'ci' | 'isActive'
+> & { isPatient: boolean };
+export type PatientRegistrationMatches = PaginatedResponse<PatientRegistrationMatch>;
+
 export interface AdministrativeUser {
   idUser: number;
   email: string;
