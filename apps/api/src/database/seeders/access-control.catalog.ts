@@ -31,6 +31,7 @@ export const MEDISUR_PERMISSIONS = {
     'reactivate',
   ],
   session: ['get-all', 'revoke-one', 'revoke-all'],
+  specialty: ['get-all', 'get-one-by-id', 'create', 'update', 'delete', 'reactivate'],
 };
 
 export const MEDISUR_ROLES = [
