@@ -13,6 +13,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { PermissionsGuard } from '@core/guards/permissions/permissions.guard';
 import { databaseConfig } from './core/config/database/database.config';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
+import { DoctorsModule } from './modules/doctors/doctors.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SpecialtiesModule } from './modules/specialties/specialties.module';
     RolesModule,
     PermissionsModule,
     SpecialtiesModule,
+    DoctorsModule,
   ],
   controllers: [AppController],
   providers: [

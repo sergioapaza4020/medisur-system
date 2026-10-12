@@ -5,9 +5,10 @@ import {
   LEGACY_ACADEMIC_NAMESPACES,
   MEDISUR_PERMISSION_NAMES,
   MEDISUR_ROLES,
+  MEDISUR_STAFF_PERMISSION_NAMES,
 } from './access-control.catalog';
 
-// Called inside a transaction. Repeated runs repair administrative grants only.
+// Called inside a transaction. Repeated runs repair the explicit administrative grants only.
 export async function seedAccessControl(manager: EntityManager) {
   const permissionRepository = manager.getRepository(Permission);
   const roleRepository = manager.getRepository(Role);
@@ -37,14 +38,22 @@ export async function seedAccessControl(manager: EntityManager) {
   }
 
   for (const definition of MEDISUR_ROLES) {
+    const grants =
+      definition.name === 'SUPERADMIN'
+        ? permissions
+        : definition.name === 'STAFF'
+          ? permissions.filter((permission) =>
+              MEDISUR_STAFF_PERMISSION_NAMES.includes(permission.name),
+            )
+          : [];
     const existing = await roleRepository.findOne({
       where: { name: definition.name },
       relations: { permissions: true },
     });
     if (existing) {
-      if (definition.name === 'SUPERADMIN') {
+      if (grants.length) {
         const assigned = new Set(existing.permissions.map((permission) => permission.name));
-        const missing = permissions.filter((permission) => !assigned.has(permission.name));
+        const missing = grants.filter((permission) => !assigned.has(permission.name));
         if (missing.length) {
           existing.permissions = [...existing.permissions, ...missing];
           await roleRepository.save(existing);
@@ -56,7 +65,7 @@ export async function seedAccessControl(manager: EntityManager) {
       roleRepository.create({
         ...definition,
         isActive: true,
-        permissions: definition.name === 'SUPERADMIN' ? permissions : [],
+        permissions: grants,
       }),
     );
   }
