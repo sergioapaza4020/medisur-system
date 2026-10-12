@@ -1,5 +1,4 @@
 // MUI Imports
-import Chip from '@mui/material/Chip';
 import { useTheme } from '@mui/material/styles';
 
 // Third-party Imports
@@ -10,7 +9,7 @@ import type { VerticalMenuContextProps } from '@menu/components/vertical-menu/Me
 
 // Component Imports
 import { useAuth } from '@/components/auth/AuthGuard';
-import { Menu, SubMenu, MenuItem, MenuSection } from '@menu/vertical-menu';
+import { Menu, MenuItem } from '@menu/vertical-menu';
 
 // Hook Imports
 import useVerticalNav from '@menu/hooks/useVerticalNav';
@@ -67,6 +66,11 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
             Usuarios
           </MenuItem>
         )}
+        {hasPermission('user.create-patient') && (
+          <MenuItem href='/dashboard/patients/register' icon={<i className='ri-user-add-line' />}>
+            Registrar paciente
+          </MenuItem>
+        )}
         {hasPermission('role.get-all') && (
           <MenuItem href='/dashboard/roles' icon={<i className='ri-shield-user-line' />}>
             Roles
@@ -77,47 +81,6 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
             Permisos por rol
           </MenuItem>
         )}
-        <MenuSection label='Misc'>
-          <MenuItem href='/dashboard/account-settings' icon={<i className='ri-user-settings-line' />}>
-            Configuraciones de cuenta
-          </MenuItem>
-          <SubMenu label='Auth Pages' icon={<i className='ri-shield-keyhole-line' />}>
-            <MenuItem href='/login' target='_blank'>
-              Inicio de sesión
-            </MenuItem>
-            <MenuItem href='/register' target='_blank'>
-              Registrar cuenta
-            </MenuItem>
-            <MenuItem href='/forgot-password' target='_blank'>
-              Olvidaste tu contraseña
-            </MenuItem>
-          </SubMenu>
-          <SubMenu label='Miscellaneous' icon={<i className='ri-question-line' />}>
-            <MenuItem href='/error' target='_blank'>
-              Error
-            </MenuItem>
-            <MenuItem href='/under-maintenance' target='_blank'>
-              Bajo mantenimiento
-            </MenuItem>
-          </SubMenu>
-          <MenuItem href='/dashboard/card-basic' icon={<i className='ri-bar-chart-box-line' />}>
-            Tarjetas
-          </MenuItem>
-          <MenuItem href='/dashboard/form-layouts' icon={<i className='ri-layout-4-line' />}>
-            Formularios
-          </MenuItem>
-          <SubMenu label='Others' icon={<i className='ri-more-line' />}>
-            <MenuItem suffix={<Chip label='Nuevo' size='small' color='info' />}>Items con badge</MenuItem>
-            <SubMenu label='Niveles de menú'>
-              <MenuItem>Menú nivel 2</MenuItem>
-              <SubMenu label='Menu Level 2'>
-                <MenuItem>Menú nivel 3</MenuItem>
-                <MenuItem>Menú nivel 3</MenuItem>
-              </SubMenu>
-            </SubMenu>
-            <MenuItem disabled>Menú deshabilitado</MenuItem>
-          </SubMenu>
-        </MenuSection>
       </Menu>
     </ScrollWrapper>
   );

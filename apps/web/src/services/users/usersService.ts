@@ -1,9 +1,24 @@
 import { apiClient } from '../http/axiosClient';
 
-import type { ApiResponse } from '@/types/auth';
+import type { ApiResponse, PatientRegistration } from '@/types/auth';
+import type { PatientRegistrationMatches } from '@/types/users';
 import type { AdministrativeUser, CreateUser, UpdateUser, UsersPage, UsersQuery } from '@/types/users';
 
 export const usersService = {
+  async searchForPatientRegistration(query: UsersQuery): Promise<PatientRegistrationMatches> {
+    return (await apiClient.get<PatientRegistrationMatches>('/users/patient-registration', { params: query })).data;
+  },
+  async createPatient(patient: PatientRegistration): Promise<{ idUser: number; email: string }> {
+    return (
+      await apiClient.post<ApiResponse<{ idUser: number; email: string }>>('/users/patient-registration', {
+        name: patient.name,
+        lastname: patient.lastname,
+        email: patient.email,
+        ci: patient.ci,
+        password: patient.password,
+      })
+    ).data.data;
+  },
   async list(query: UsersQuery): Promise<UsersPage> {
     return (await apiClient.get<UsersPage>('/users', { params: query })).data;
   },

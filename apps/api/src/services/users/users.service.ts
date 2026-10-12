@@ -1,6 +1,12 @@
 import { normalizeEmail } from 'src/common/utils/normalize-email';
 import { UserUpdateDto } from 'src/dtos/users/users-update.dto';
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { RegisterPatientDto } from 'src/dtos/auth/register-patient.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserCreateDto } from 'src/dtos/users/users.dto';
 import { User } from 'src/entities/users/users.entity';
@@ -24,6 +30,54 @@ export class UsersService {
 
   private assertHasRoles(roles: unknown[] | undefined) {
     if (!roles?.length) throw new BadRequestException('El usuario debe tener al menos un rol');
+  }
+
+  async createPatient(dto: RegisterPatientDto, authorId?: number) {
+    try {
+      return await this.create(
+        {
+          name: dto.name,
+          lastname: dto.lastname,
+          email: dto.email,
+          ci: dto.ci,
+          password: dto.password,
+          roleNames: ['PATIENT'],
+        },
+        authorId,
+      );
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        if (error.message === 'User already exists')
+          throw new BadRequestException(
+            'Ya existe una cuenta con ese correo electrónico o documento',
+          );
+        if (error.message === 'Role not found: PATIENT')
+          throw new ServiceUnavailableException(
+            'El registro de pacientes no está disponible temporalmente',
+          );
+      }
+      throw error;
+    }
+  }
+
+  async searchForPatientRegistration(query: UsersQueryDto) {
+    if (!query.search || query.search.trim().length < 3)
+      throw new BadRequestException(
+        'Ingresa al menos 3 caracteres para buscar por nombre, correo o documento',
+      );
+    const result = await this.getAll(query);
+    return {
+      ...result,
+      data: result.data.map((user) => ({
+        idUser: user.idUser,
+        name: user.name,
+        lastname: user.lastname,
+        email: user.email,
+        ci: user.ci,
+        isActive: user.isActive,
+        isPatient: (user.roles ?? []).some((role) => role.name === 'PATIENT'),
+      })),
+    };
   }
 
   async getAll(query: UsersQueryDto = new UsersQueryDto()) {

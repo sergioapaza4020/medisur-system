@@ -44,6 +44,9 @@ describe('MEDISUR access seed', () => {
     expect(academic.isActive).toBe(false);
     const admin = roles.records.find((r) => r.name === 'SUPERADMIN')!;
     expect(admin.permissions.map((p) => p.name)).toEqual(MEDISUR_PERMISSION_NAMES);
+    expect(admin.permissions.some((permission) => permission.name === 'user.create-patient')).toBe(
+      true,
+    );
     expect(admin.permissions).not.toContain(custom);
     const context = new ExecutionContextHost(
       [{ user: { roles: [admin.name], permissions: admin.permissions.map((p) => p.name) } }],

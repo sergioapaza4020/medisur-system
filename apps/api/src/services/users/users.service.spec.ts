@@ -71,6 +71,85 @@ describe('HU-USR-04 administration', () => {
     roles.getOneByName.mockReset();
   });
 
+  it('shares patient creation with public registration and fixes privileges and the administrative author', async () => {
+    const patient = { idUser: 5, email: 'ana@example.com' } as User;
+    const create = jest.spyOn(service, 'create').mockResolvedValueOnce(patient);
+    try {
+      const input = {
+        ...dto,
+        roleNames: ['SUPERADMIN'],
+        permissions: ['user.create'],
+        createdBy: 999,
+        isActive: false,
+      };
+      expect(await service.createPatient(input, 7)).toBe(patient);
+      expect(create).toHaveBeenCalledWith(
+        {
+          email: dto.email,
+          name: dto.name,
+          lastname: dto.lastname,
+          ci: dto.ci,
+          password: dto.password,
+          roleNames: ['PATIENT'],
+        },
+        7,
+      );
+    } finally {
+      create.mockRestore();
+    }
+  });
+
+  it('bounds the prior lookup in the database and projects only registration identity data including inactive accounts', async () => {
+    qb.getManyAndCount.mockResolvedValue([
+      [
+        {
+          idUser: 2,
+          name: 'Ana',
+          lastname: 'Pérez',
+          email: 'ana@example.com',
+          ci: '123456',
+          isActive: false,
+          roles: [{ name: 'PATIENT' }],
+          password: 'secret-hash',
+          createdBy: 9,
+          avatar: 'private',
+        },
+      ],
+      12,
+    ]);
+    const query = Object.assign(new UsersQueryDto(), {
+      page: 2,
+      limit: 5,
+      status: RecordStatus.ALL,
+      search: '123',
+    });
+    const result = await service.searchForPatientRegistration(query);
+    expect(qb.skip).toHaveBeenCalledWith(5);
+    expect(qb.take).toHaveBeenCalledWith(5);
+    expect(qb.andWhere).toHaveBeenCalledWith(expect.any(String), { search: '%123%' });
+    expect(result.meta).toEqual({ page: 2, limit: 5, total: 12, totalPages: 3 });
+    expect(result.data).toEqual([
+      {
+        idUser: 2,
+        name: 'Ana',
+        lastname: 'Pérez',
+        email: 'ana@example.com',
+        ci: '123456',
+        isActive: false,
+        isPatient: true,
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/password|createdBy|private/);
+    repository.createQueryBuilder.mockClear();
+    await expect(service.searchForPatientRegistration(new UsersQueryDto())).rejects.toThrow(
+      'al menos 3',
+    );
+    await expect(
+      service.searchForPatientRegistration(Object.assign(new UsersQueryDto(), { search: ' a ' })),
+    ).rejects.toThrow('al menos 3');
+    expect(repository.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
   it('paginates the existing query, filters status and binds literal search safely', async () => {
     qb.getManyAndCount.mockResolvedValue([[{ idUser: 1 }], 26]);
     const query = Object.assign(new UsersQueryDto(), {

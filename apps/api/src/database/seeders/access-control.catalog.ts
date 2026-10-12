@@ -5,6 +5,7 @@ export const MEDISUR_PERMISSIONS = {
     'get-one-by-email',
     'get-one-by-id',
     'create',
+    'create-patient',
     'update',
     'delete',
     'reactivate',

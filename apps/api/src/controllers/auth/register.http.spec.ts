@@ -23,7 +23,7 @@ import { ResponseInterceptor } from 'src/core/interceptors/response/response.int
 import { HttpExceptionFilter } from 'src/core/filters/http-exception/http-exception.filter';
 import { QueryFailedError } from 'typeorm';
 
-describe('HU-USR-02 public patient registration', () => {
+describe('Patient registration over HTTP (HU-USR-02 and HU-USR-03)', () => {
   let app: INestApplication;
   let server: Server;
   let users: User[];
@@ -67,7 +67,36 @@ describe('HU-USR-02 public patient registration', () => {
     }),
     createQueryBuilder: () => {
       let email: string;
+      let search: string | undefined;
+      let isActive: boolean | undefined;
+      let skip = 0;
+      let take = 10;
       const qb = {
+        orderBy: () => qb,
+        andWhere: (_: string, params: { search?: string; isActive?: boolean }) => {
+          if (params.search !== undefined) search = params.search.slice(1, -1).toLowerCase();
+          if (params.isActive !== undefined) isActive = params.isActive;
+          return qb;
+        },
+        skip: (value: number) => {
+          skip = value;
+          return qb;
+        },
+        take: (value: number) => {
+          take = value;
+          return qb;
+        },
+        getManyAndCount: () => {
+          const matches = users.filter(
+            (user) =>
+              (isActive === undefined || user.isActive === isActive) &&
+              (!search ||
+                [user.name, user.lastname, user.email, user.ci].some((field) =>
+                  field?.toLowerCase().includes(search!),
+                )),
+          );
+          return Promise.resolve([matches.slice(skip, skip + take), matches.length]);
+        },
         addSelect: () => qb,
         leftJoinAndSelect: () => qb,
         where: (_: string, params: { email: string }) => {
@@ -155,6 +184,170 @@ describe('HU-USR-02 public patient registration', () => {
       isActive: true,
       permissions: [],
     });
+  });
+
+  async function administrativeToken(granted = true, name = 'STAFF') {
+    const actor = Object.assign(new User(), {
+      idUser: users.length + 1,
+      name: 'Personal',
+      lastname: 'Administrativo',
+      email: 'staff@example.com',
+      ci: 'STAFF123',
+      isActive: true,
+      password: await bcrypt.hash('Staff1234', 4),
+      roles: [
+        {
+          name,
+          isActive: true,
+          permissions: granted ? [{ name: 'user.create-patient', isActive: true }] : [],
+        },
+      ],
+    });
+    users.push(actor);
+    const response = await request(server)
+      .post('/api/auth/login')
+      .send({ email: actor.email, password: 'Staff1234' })
+      .expect(201);
+    return (response.body as { data: { accessToken: string } }).data.accessToken;
+  }
+
+  it('allows the specific registration permission without general user/role administration and attributes the author from the session', async () => {
+    const token = await administrativeToken();
+    const response = await request(server)
+      .post('/api/users/patient-registration')
+      .auth(token, { type: 'bearer' })
+      .send({
+        ...valid,
+        email: ' ANA@EXAMPLE.COM ',
+        roleNames: ['SUPERADMIN'],
+        permissions: ['user.create'],
+        createdBy: 999,
+        isActive: false,
+      })
+      .expect(201);
+    expect(response.body as unknown).toMatchObject({ data: { idUser: 2, email: valid.email } });
+    expect(users[1]).toMatchObject({
+      email: valid.email,
+      roles: [patient],
+      isActive: true,
+      createdBy: 1,
+    });
+    expect(await bcrypt.compare(valid.password, users[1].password)).toBe(true);
+    expect(JSON.stringify(response.body)).not.toMatch(/password|Segura123/);
+    await request(server).get('/api/users').auth(token, { type: 'bearer' }).expect(403);
+    await request(server)
+      .post('/api/users')
+      .auth(token, { type: 'bearer' })
+      .send({ ...valid, roleNames: ['SUPERADMIN'] })
+      .expect(403);
+    const login = await request(server)
+      .post('/api/auth/login')
+      .send({ email: valid.email, password: valid.password })
+      .expect(201);
+    const patientToken = (login.body as { data: { accessToken: string } }).data.accessToken;
+    const current = await request(server)
+      .get('/api/auth/me')
+      .auth(patientToken, { type: 'bearer' })
+      .expect(200);
+    expect(current.body as unknown).toMatchObject({
+      data: { roles: ['PATIENT'], permissions: [] },
+    });
+  });
+
+  it('rejects direct anonymous and unauthorized registration/search, including SUPERADMIN without grants', async () => {
+    await request(server).post('/api/users/patient-registration').send(valid).expect(401);
+    await request(server).get('/api/users/patient-registration?search=123').expect(401);
+    const token = await administrativeToken(false, 'SUPERADMIN');
+    await request(server)
+      .post('/api/users/patient-registration')
+      .auth(token, { type: 'bearer' })
+      .send(valid)
+      .expect(403);
+    await request(server)
+      .get('/api/users/patient-registration?search=123')
+      .auth(token, { type: 'bearer' })
+      .expect(403);
+    expect(userRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('finds prior inactive and non-patient accounts with paginated minimum identity data and validates query parameters', async () => {
+    const token = await administrativeToken();
+    await request(server)
+      .post('/api/users/patient-registration')
+      .auth(token, { type: 'bearer' })
+      .send(valid)
+      .expect(201);
+    users[1].isActive = false;
+    const found = await request(server)
+      .get('/api/users/patient-registration?search=123&status=all&limit=1')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(found.body as unknown).toMatchObject({
+      meta: { page: 1, limit: 1, total: 2, totalPages: 2 },
+      data: [{ isPatient: false }],
+    });
+    const next = await request(server)
+      .get('/api/users/patient-registration?search=123&status=all&limit=1&page=2')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(next.body as unknown).toMatchObject({
+      data: [{ email: valid.email, isPatient: true, isActive: false }],
+    });
+    expect(JSON.stringify(next.body)).not.toMatch(/password|createdBy|permissions|Segura123/);
+    await request(server)
+      .post('/api/users/patient-registration')
+      .auth(token, { type: 'bearer' })
+      .send(valid)
+      .expect(400);
+    for (const query of [
+      '',
+      'search=a',
+      'search=123&page=0',
+      'search=123&limit=101',
+      'search=123&status=invalid',
+    ]) {
+      await request(server)
+        .get('/api/users/patient-registration?' + query)
+        .auth(token, { type: 'bearer' })
+        .expect(400);
+    }
+    const empty = await request(server)
+      .get('/api/users/patient-registration?search=absent&status=all')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(empty.body as unknown).toMatchObject({ data: [], meta: { total: 0, totalPages: 0 } });
+  });
+
+  it('validates administrative input and uniqueness races before persisting partial records', async () => {
+    const token = await administrativeToken();
+    for (const invalid of [
+      {},
+      { ...valid, password: 'short' },
+      { ...valid, email: 'invalid' },
+      { ...valid, ci: null },
+    ]) {
+      await request(server)
+        .post('/api/users/patient-registration')
+        .auth(token, { type: 'bearer' })
+        .send(invalid)
+        .expect(400);
+    }
+    expect(userRepository.save).not.toHaveBeenCalled();
+    racingDuplicate = true;
+    await request(server)
+      .post('/api/users/patient-registration')
+      .auth(token, { type: 'bearer' })
+      .send(valid)
+      .expect(400);
+    expect(users).toHaveLength(1);
+    racingDuplicate = false;
+    patient.isActive = false;
+    await request(server)
+      .post('/api/users/patient-registration')
+      .auth(token, { type: 'bearer' })
+      .send(valid)
+      .expect(503);
+    expect(users).toHaveLength(1);
   });
   afterAll(async () => {
     await app?.close();

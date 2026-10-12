@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  ServiceUnavailableException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { RegisterPatientDto } from 'src/dtos/auth/register-patient.dto';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
@@ -26,29 +21,8 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterPatientDto) {
-    try {
-      const user = await this.userService.create({
-        name: dto.name,
-        lastname: dto.lastname,
-        email: dto.email,
-        ci: dto.ci,
-        password: dto.password,
-        roleNames: ['PATIENT'],
-      });
-      return { idUser: user.idUser, email: user.email };
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        if (error.message === 'User already exists')
-          throw new BadRequestException(
-            'Ya existe una cuenta con ese correo electrónico o documento',
-          );
-        if (error.message === 'Role not found: PATIENT')
-          throw new ServiceUnavailableException(
-            'El registro de pacientes no está disponible temporalmente',
-          );
-      }
-      throw error;
-    }
+    const user = await this.userService.createPatient(dto);
+    return { idUser: user.idUser, email: user.email };
   }
 
   async validateUser(loginDto: LoginDto): Promise<User> {

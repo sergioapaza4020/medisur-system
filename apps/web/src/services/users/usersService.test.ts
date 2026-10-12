@@ -11,6 +11,20 @@ vi.mock('../http/axiosClient', () => ({
 beforeEach(() => vi.clearAllMocks());
 
 describe('User administration with the shared HTTP client', () => {
+  it('uses bounded prior search and patient registration with a field allowlist through the same client', async () => {
+    const query = { page: 2, limit: 10, status: 'all' as const, search: '123' };
+    const page = { data: [{ idUser: 5, isPatient: true }], meta: { page: 2, limit: 10, total: 12, totalPages: 2 } };
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: page });
+    expect(await usersService.searchForPatientRegistration(query)).toEqual(page);
+    expect(apiClient.get).toHaveBeenCalledWith('/users/patient-registration', { params: query });
+    const patient = { name: 'Ana', lastname: 'Pérez', email: 'ana@example.com', ci: '123456', password: 'Segura123' };
+    const created = { idUser: 5, email: patient.email };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: created } });
+    expect(
+      await usersService.createPatient({ ...patient, roleNames: ['SUPERADMIN'], createdBy: 999 } as typeof patient),
+    ).toEqual(created);
+    expect(apiClient.post).toHaveBeenCalledWith('/users/patient-registration', patient);
+  });
   it('preserves pagination metadata and centralizes list, detail and role requests', async () => {
     const page = { data: [{ idUser: 1 }], meta: { page: 2, limit: 10, total: 12, totalPages: 2 } };
     vi.mocked(apiClient.get)
