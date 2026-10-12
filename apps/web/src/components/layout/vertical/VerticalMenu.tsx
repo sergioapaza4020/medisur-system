@@ -61,6 +61,16 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
         renderExpandedMenuItemIcon={{ icon: <i className='ri-circle-line' /> }}
         menuSectionStyles={menuSectionStyles(theme)}
       >
+        {hasPermission('doctor.get-all') && (
+          <MenuItem href='/dashboard/doctors' icon={<i className='ri-stethoscope-line' />}>
+            Médicos
+          </MenuItem>
+        )}
+        {hasPermission('doctor.create') && (
+          <MenuItem href='/dashboard/doctors/register' icon={<i className='ri-user-add-line' />}>
+            Registrar médico
+          </MenuItem>
+        )}
         {hasPermission('specialty.get-all') && (
           <MenuItem href='/dashboard/specialties' icon={<i className='ri-heart-pulse-line' />}>
             Especialidades

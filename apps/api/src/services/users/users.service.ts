@@ -10,7 +10,7 @@ import { RegisterPatientDto } from 'src/dtos/auth/register-patient.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserCreateDto } from 'src/dtos/users/users.dto';
 import { User } from 'src/entities/users/users.entity';
-import { QueryFailedError, Repository } from 'typeorm';
+import { EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { UsersQueryDto } from 'src/dtos/users/users-query.dto';
 import { statusFilter } from 'src/common/utils/status-filter';
 import { paginate } from 'src/common/utils/paginate';
@@ -178,9 +178,16 @@ export class UsersService {
     return user;
   }
 
-  async assignRoles(idUser: number, roleNames: string[], authorId: number, replace = false) {
+  async assignRoles(
+    idUser: number,
+    roleNames: string[],
+    authorId: number,
+    replace = false,
+    manager?: EntityManager,
+  ) {
+    const repository = manager?.getRepository(User) ?? this.userRepository;
     if (replace) this.assertHasRoles(roleNames);
-    const user = await this.userRepository.findOne({
+    const user = await repository.findOne({
       where: replace ? { idUser } : { idUser, isActive: true },
       relations: ['roles'],
     });
@@ -190,7 +197,9 @@ export class UsersService {
       // Preserve existing inactive associations, but never grant new inactive roles.
       const role =
         (replace ? user.roles.find((assigned) => assigned.name === rn) : undefined) ??
-        (await this.rolesService.getOneByName(rn));
+        (await (manager
+          ? this.rolesService.getOneByName(rn, manager)
+          : this.rolesService.getOneByName(rn)));
       if (!role) throw new BadRequestException(`Role not found: ${rn}`);
 
       const alreadyAssigned = roles.some((r) => r.idRole === role.idRole);
@@ -203,7 +212,7 @@ export class UsersService {
     user.roles = roles;
     user.updatedAt = new Date();
     user.updatedBy = authorId;
-    return this.userRepository.save(user);
+    return repository.save(user);
   }
 
   async delete(idUser: number, authorId: number) {

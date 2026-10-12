@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RoleCreateDto } from 'src/dtos/roles/roles.dto';
 import { Role } from 'src/entities/roles/roles.entity';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RoleUpdateDto } from 'src/dtos/roles/role-update.dto';
 import { Permission } from 'src/entities/permissions/permissions.entity';
@@ -84,8 +84,8 @@ export class RolesService {
     return this.roleRepository.save(role);
   }
 
-  async getOneByName(name: string) {
-    return this.roleRepository.findOne({
+  async getOneByName(name: string, manager?: EntityManager) {
+    return (manager?.getRepository(Role) ?? this.roleRepository).findOne({
       where: { name, isActive: true },
     });
   }

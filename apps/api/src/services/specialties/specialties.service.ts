@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { Specialty } from 'src/entities/specialties/specialties.entity';
 import { SpecialtiesQueryDto, SpecialtyWriteDto } from 'src/dtos/specialties/specialties.dto';
 import {
@@ -35,8 +35,11 @@ export class SpecialtiesService {
   }
 
   // Operational consumers must resolve active specialties, including on write.
-  async getActiveById(idSpecialty: number) {
-    const specialty = await this.repository.findOne({ where: { idSpecialty, isActive: true } });
+  async getActiveById(idSpecialty: number, manager?: EntityManager) {
+    const specialty = await (manager?.getRepository(Specialty) ?? this.repository).findOne({
+      where: { idSpecialty, isActive: true },
+      ...(manager ? { lock: { mode: 'pessimistic_read' as const } } : {}),
+    });
     if (!specialty) throw new BadRequestException('Especialidad activa no encontrada');
     return specialty;
   }

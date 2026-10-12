@@ -2,7 +2,11 @@ import { EntityManager } from 'typeorm';
 import { Permission } from 'src/entities/permissions/permissions.entity';
 import { Role } from 'src/entities/roles/roles.entity';
 import { seedAccessControl } from './access-control.seeder';
-import { MEDISUR_PERMISSION_NAMES, MEDISUR_ROLES } from './access-control.catalog';
+import {
+  MEDISUR_PERMISSION_NAMES,
+  MEDISUR_ROLES,
+  MEDISUR_STAFF_PERMISSION_NAMES,
+} from './access-control.catalog';
 import { Reflector } from '@nestjs/core';
 import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import { PermissionsGuard } from '@core/guards/permissions/permissions.guard';
@@ -55,7 +59,11 @@ describe('MEDISUR access seed', () => {
     );
     expect(new PermissionsGuard(new Reflector()).canActivate(context)).toBe(true);
     for (const role of roles.records.filter((r) => r.name !== 'SUPERADMIN')) {
-      expect(role.permissions).toEqual([]);
+      expect(role.permissions.map(({ name }) => name)).toEqual(
+        role.name === 'STAFF'
+          ? MEDISUR_PERMISSION_NAMES.filter((name) => MEDISUR_STAFF_PERMISSION_NAMES.includes(name))
+          : [],
+      );
     }
 
     // Re-running repairs missing grants without reactivating disabled permissions.
@@ -69,7 +77,10 @@ describe('MEDISUR access seed', () => {
     expect(admin.permissions.map((p) => p.name)).toEqual(
       MEDISUR_PERMISSION_NAMES.filter((name) => name !== 'role.update'),
     );
-    expect(staff.permissions).toEqual([custom]);
+    expect(staff.permissions.map(({ name }) => name)).toEqual([
+      'custom.read',
+      ...MEDISUR_PERMISSION_NAMES.filter((name) => MEDISUR_STAFF_PERMISSION_NAMES.includes(name)),
+    ]);
     expect(permissions.records.find((p) => p.name === 'role.update')!.isActive).toBe(false);
     const saves = roles.save.mock.calls.length;
     await seedAccessControl(manager);
