@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '@core/guards/auth/auth.guard';
 import { APP_GUARD } from '@nestjs/core';
 import { PermissionsGuard } from '@core/guards/permissions/permissions.guard';
 import { databaseConfig } from './core/config/database/database.config';
+import { SpecialtiesModule } from './modules/specialties/specialties.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { databaseConfig } from './core/config/database/database.config';
     AuthModule,
     RolesModule,
     PermissionsModule,
+    SpecialtiesModule,
   ],
   controllers: [AppController],
   providers: [

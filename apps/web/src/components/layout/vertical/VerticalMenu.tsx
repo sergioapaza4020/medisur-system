@@ -61,6 +61,11 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
         renderExpandedMenuItemIcon={{ icon: <i className='ri-circle-line' /> }}
         menuSectionStyles={menuSectionStyles(theme)}
       >
+        {hasPermission('specialty.get-all') && (
+          <MenuItem href='/dashboard/specialties' icon={<i className='ri-heart-pulse-line' />}>
+            Especialidades
+          </MenuItem>
+        )}
         {hasPermission('user.get-all') && (
           <MenuItem href='/dashboard/users' icon={<i className='ri-group-line' />}>
             Usuarios

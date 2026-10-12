@@ -4,6 +4,7 @@ const domains: Record<string, string> = {
   role: 'Roles',
   permission: 'Permisos',
   session: 'Sesiones',
+  specialty: 'Especialidades',
 };
 const actions: Record<string, string> = {
   'create-patient': 'Registrar pacientes',
