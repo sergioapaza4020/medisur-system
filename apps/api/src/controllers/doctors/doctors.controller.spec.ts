@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { BadRequestException, INestApplication } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { Server } from 'http';
@@ -20,6 +20,8 @@ describe('Doctor HTTP authorization and input validation', () => {
     changeStatus: jest.fn(),
     getSpecialties: jest.fn(),
     assignSpecialties: jest.fn(),
+    getSelectionSpecialties: jest.fn(),
+    getBySpecialty: jest.fn(),
   };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -49,6 +51,8 @@ describe('Doctor HTTP authorization and input validation', () => {
 
   it.each([
     ['get', '/doctors', 'doctor.get-all', 'getAll'],
+    ['get', '/doctors/selection-specialties', 'doctor.get-by-specialty', 'getSelectionSpecialties'],
+    ['get', '/doctors/by-specialty/1', 'doctor.get-by-specialty', 'getBySpecialty'],
     ['get', '/doctors/registration-users?search=ana', 'doctor.create', 'searchRegistrationUsers'],
     ['post', '/doctors', 'doctor.create', 'create'],
     ['delete', '/doctors/1', 'doctor.delete', 'changeStatus'],
@@ -156,6 +160,34 @@ describe('Doctor HTTP authorization and input validation', () => {
       { idUser: 4, isActive: false, specialtyIds: [1, 2] },
       7,
     );
+  });
+
+  it('validates operational IDs and common pagination without allowing an inactive-state override', async () => {
+    permissions = ['doctor.get-by-specialty'];
+    for (const id of ['invalid', '0', '-1', '1.5'])
+      await request(server).get(`/doctors/by-specialty/${id}`).expect(400);
+    for (const route of ['/doctors/by-specialty/1', '/doctors/selection-specialties']) {
+      for (const query of ['page=0', 'page=1.5', 'limit=101', 'limit=0'])
+        await request(server).get(`${route}?${query}`).expect(400);
+    }
+    expect(service.getBySpecialty).not.toHaveBeenCalled();
+    service.getBySpecialty.mockResolvedValueOnce({
+      data: [],
+      meta: { page: 2, limit: 5, total: 0, totalPages: 0 },
+    });
+    const response = await request(server)
+      .get('/doctors/by-specialty/1?page=2&limit=5&status=all')
+      .expect(200);
+    expect(service.getBySpecialty).toHaveBeenCalledWith(1, { page: 2, limit: 5 });
+    expect(response.body).toMatchObject({ status: true, data: [], meta: { page: 2, total: 0 } });
+  });
+
+  it('returns a coherent error for inactive or nonexistent specialties', async () => {
+    permissions = ['doctor.get-by-specialty'];
+    service.getBySpecialty.mockRejectedValueOnce(
+      new BadRequestException('Especialidad activa no encontrada'),
+    );
+    await request(server).get('/doctors/by-specialty/999').expect(400);
   });
 
   it('reuses paginated responses and validates query values and route IDs', async () => {

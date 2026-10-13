@@ -66,6 +66,11 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
             Médicos
           </MenuItem>
         )}
+        {hasPermission('doctor.get-by-specialty') && (
+          <MenuItem href='/dashboard/doctors/by-specialty' icon={<i className='ri-search-line' />}>
+            Médicos por especialidad
+          </MenuItem>
+        )}
         {hasPermission('doctor.create') && (
           <MenuItem href='/dashboard/doctors/register' icon={<i className='ri-user-add-line' />}>
             Registrar médico

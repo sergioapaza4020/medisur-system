@@ -23,3 +23,12 @@ export interface DoctorsQuery extends PaginationQuery {
 }
 export type DoctorsPage = PaginatedResponse<Doctor>;
 export type DoctorAccountsPage = PaginatedResponse<DoctorAccount>;
+
+export interface DoctorSelection {
+  idDoctor: number;
+  name: string;
+  lastname: string;
+}
+export type SpecialtySelection = Pick<Specialty, 'idSpecialty' | 'name'>;
+export type DoctorSelectionPage = PaginatedResponse<DoctorSelection>;
+export type SpecialtySelectionPage = PaginatedResponse<SpecialtySelection>;

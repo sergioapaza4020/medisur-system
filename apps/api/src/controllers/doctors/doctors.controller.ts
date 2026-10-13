@@ -1,5 +1,6 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -21,12 +22,29 @@ import {
 } from 'src/dtos/doctors/doctors.dto';
 import { UsersQueryDto } from 'src/dtos/users/users-query.dto';
 import { DoctorsService } from 'src/services/doctors/doctors.service';
+import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
 
 @ApiBearerAuth('access-token')
 @ApiTags('Doctors')
 @Controller('doctors')
 export class DoctorsController {
   constructor(private readonly service: DoctorsService) {}
+
+  @Get('selection-specialties')
+  @Permissions('doctor.get-by-specialty')
+  getSelectionSpecialties(@Query() query: PaginationQueryDto) {
+    return this.service.getSelectionSpecialties(query);
+  }
+
+  @Get('by-specialty/:idSpecialty')
+  @Permissions('doctor.get-by-specialty')
+  getBySpecialty(
+    @Param('idSpecialty', ParseIntPipe) id: number,
+    @Query() query: PaginationQueryDto,
+  ) {
+    if (id < 1) throw new BadRequestException('Especialidad activa no encontrada');
+    return this.service.getBySpecialty(id, query);
+  }
 
   @Get('registration-users')
   @Permissions('doctor.create')

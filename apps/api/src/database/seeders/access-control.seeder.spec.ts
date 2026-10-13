@@ -6,6 +6,7 @@ import {
   MEDISUR_PERMISSION_NAMES,
   MEDISUR_ROLES,
   MEDISUR_STAFF_PERMISSION_NAMES,
+  MEDISUR_PATIENT_PERMISSION_NAMES,
 } from './access-control.catalog';
 import { Reflector } from '@nestjs/core';
 import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
@@ -62,7 +63,9 @@ describe('MEDISUR access seed', () => {
       expect(role.permissions.map(({ name }) => name)).toEqual(
         role.name === 'STAFF'
           ? MEDISUR_PERMISSION_NAMES.filter((name) => MEDISUR_STAFF_PERMISSION_NAMES.includes(name))
-          : [],
+          : role.name === 'PATIENT'
+            ? MEDISUR_PATIENT_PERMISSION_NAMES
+            : [],
       );
     }
 
@@ -116,5 +119,34 @@ describe('MEDISUR access seed', () => {
       where: { name: 'SUPERADMIN' },
       relations: { permissions: true },
     });
+  });
+
+  it('repairs only the patient selection grant and preserves custom or disabled permissions', async () => {
+    const permissions = repository<Permission>();
+    const roles = repository<Role>();
+    const custom = { name: 'custom.read', isActive: true } as Permission;
+    const consultation = { name: 'doctor.get-by-specialty', isActive: true } as Permission;
+    permissions.records.push(custom, consultation);
+    const patient = { name: 'PATIENT', isActive: true, permissions: [custom] } as Role;
+    roles.records.push(patient);
+    const manager = {
+      getRepository: (entity: unknown) => (entity === Permission ? permissions : roles),
+    } as unknown as EntityManager;
+    await seedAccessControl(manager);
+    await seedAccessControl(manager);
+    expect(patient.permissions.map(({ name }) => name)).toEqual([
+      'custom.read',
+      'doctor.get-by-specialty',
+    ]);
+    expect(
+      patient.permissions.some(({ name }) =>
+        ['doctor.get-all', 'specialty.get-all'].includes(name),
+      ),
+    ).toBe(false);
+    patient.permissions = [custom];
+    consultation.isActive = false;
+    await seedAccessControl(manager);
+    expect(patient.permissions).toEqual([custom]);
+    expect(consultation.isActive).toBe(false);
   });
 });

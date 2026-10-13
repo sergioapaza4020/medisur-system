@@ -8,6 +8,18 @@ vi.mock('../http/axiosClient', () => ({
 }));
 beforeEach(() => vi.clearAllMocks());
 describe('Doctor HTTP client', () => {
+  it('queries operational specialties and doctors using only the shared pagination contract', async () => {
+    const query = { page: 2, limit: 5 };
+    const result = { data: [], meta: { ...query, total: 0, totalPages: 0 } };
+    vi.mocked(apiClient.get).mockResolvedValue({ data: result });
+    expect(await doctorsService.selectionSpecialties(query)).toEqual(result);
+    expect(await doctorsService.bySpecialty(3, query)).toEqual(result);
+    expect(apiClient.get).toHaveBeenCalledWith('/doctors/selection-specialties', { params: query });
+    expect(apiClient.get).toHaveBeenCalledWith('/doctors/by-specialty/3', { params: query });
+    const failure = new Error('Especialidad activa no encontrada');
+    vi.mocked(apiClient.get).mockRejectedValueOnce(failure);
+    await expect(doctorsService.bySpecialty(99, query)).rejects.toBe(failure);
+  });
   it('reads full current assignments and replaces them with a PUT selection', async () => {
     const doctor = { idDoctor: 1, specialties: [] };
     vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: doctor } });
