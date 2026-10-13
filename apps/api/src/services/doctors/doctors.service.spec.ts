@@ -1,5 +1,6 @@
 import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { Doctor } from 'src/entities/doctors/doctors.entity';
+import { DoctorSpecialtyHistory } from 'src/entities/doctors/doctor-specialty-history.entity';
 import { User } from 'src/entities/users/users.entity';
 import { Role } from 'src/entities/roles/roles.entity';
 import { Specialty } from 'src/entities/specialties/specialties.entity';
@@ -31,6 +32,7 @@ describe('Doctor registration integrity', () => {
     createQueryBuilder: jest.fn(() => qb),
   };
   const users = { findOne: jest.fn(), save: jest.fn() };
+  const history = { save: jest.fn() };
   const roles = { findOne: jest.fn() };
   const specialties = { findOne: jest.fn() };
   const globalUsers = { findOne: jest.fn(), save: jest.fn(), createQueryBuilder: jest.fn() };
@@ -38,13 +40,15 @@ describe('Doctor registration integrity', () => {
   const globalSpecialties = { findOne: jest.fn() };
   const manager = {
     getRepository: jest.fn((entity: unknown) =>
-      entity === User
-        ? users
-        : entity === Role
-          ? roles
-          : entity === Specialty
-            ? specialties
-            : doctors,
+      entity === DoctorSpecialtyHistory
+        ? history
+        : entity === User
+          ? users
+          : entity === Role
+            ? roles
+            : entity === Specialty
+              ? specialties
+              : doctors,
     ),
   } as unknown as EntityManager;
   const transaction = jest.fn((callback: (manager: EntityManager) => Promise<unknown>) =>
@@ -71,6 +75,7 @@ describe('Doctor registration integrity', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    history.save.mockResolvedValue([]);
     user = {
       idUser: 4,
       name: 'Ana',
@@ -112,6 +117,20 @@ describe('Doctor registration integrity', () => {
       lock: { mode: 'pessimistic_read' },
     });
     expect(result.specialties).toHaveLength(2);
+    expect(history.save).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          assigned: true,
+          createdBy: 7,
+          specialty: expect.objectContaining({ idSpecialty: 1 }) as unknown,
+        }),
+        expect.objectContaining({
+          assigned: true,
+          createdBy: 7,
+          specialty: expect.objectContaining({ idSpecialty: 2 }) as unknown,
+        }),
+      ]),
+    );
     expect(JSON.stringify(result)).not.toMatch(/password|private|roles|createdBy/);
     expect(globalUsers.save).not.toHaveBeenCalled();
     expect(globalRoles.findOne).not.toHaveBeenCalled();
@@ -241,6 +260,12 @@ describe('Doctor registration integrity', () => {
       specialties: [{ idSpecialty: 2 }],
     });
     expect(profile).toMatchObject({ updatedBy: 7, deletedBy: 7 });
+    expect(doctors.save).toHaveBeenCalledWith({
+      idDoctor: 1,
+      isActive: false,
+      updatedBy: 7,
+      deletedBy: 7,
+    });
     expect(user.isActive).toBe(true);
     expect(await service.changeStatus(1, true, 8)).toMatchObject({ idDoctor: 1, isActive: true });
     user.isActive = false;
@@ -277,5 +302,116 @@ describe('Doctor registration integrity', () => {
     } finally {
       getAll.mockRestore();
     }
+  });
+
+  function assignedDoctor(isActive = true) {
+    user.roles.push(doctorRole);
+    const doctor = {
+      idDoctor: 1,
+      user,
+      isActive,
+      specialties: [
+        { idSpecialty: 1, name: 'Cardiología', isActive: false },
+        { idSpecialty: 2, name: 'Medicina interna', isActive: true },
+      ],
+    } as Doctor;
+    doctors.findOne.mockResolvedValue(doctor);
+    return doctor;
+  }
+
+  it('replaces multiple assignments atomically and retains immutable removal history', async () => {
+    assignedDoctor();
+    const result = await service.assignSpecialties(1, { specialtyIds: [1, 3, 4] }, 7);
+    expect(result.specialties.map(({ idSpecialty }) => idSpecialty)).toEqual([1, 3, 4]);
+    expect(result.specialties[0].isActive).toBe(false);
+    expect(doctors.findOne).toHaveBeenNthCalledWith(1, {
+      where: { idDoctor: 1 },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(specialties.findOne).toHaveBeenCalledTimes(2);
+    expect(history.save).toHaveBeenCalledWith([
+      expect.objectContaining({
+        assigned: true,
+        createdBy: 7,
+        specialty: expect.objectContaining({ idSpecialty: 3 }) as unknown,
+      }),
+      expect.objectContaining({
+        assigned: true,
+        createdBy: 7,
+        specialty: expect.objectContaining({ idSpecialty: 4 }) as unknown,
+      }),
+      expect.objectContaining({
+        assigned: false,
+        createdBy: 7,
+        specialty: expect.objectContaining({ idSpecialty: 2 }) as unknown,
+      }),
+    ]);
+    expect(user.isActive).toBe(true);
+  });
+
+  it('supports clearing assignments of inactive doctors and idempotent requests without duplicate events', async () => {
+    assignedDoctor(false);
+    await service.assignSpecialties(1, { specialtyIds: [2, 1] }, 7);
+    expect(doctors.save).not.toHaveBeenCalled();
+    expect(history.save).not.toHaveBeenCalled();
+    expect(await service.assignSpecialties(1, { specialtyIds: [] }, 7)).toMatchObject({
+      specialties: [],
+    });
+    expect(history.save).toHaveBeenCalledWith([
+      expect.objectContaining({ assigned: false }),
+      expect.objectContaining({ assigned: false }),
+    ]);
+  });
+
+  it('rejects duplicate IDs, invalid doctors and unavailable specialties before any write', async () => {
+    await expect(service.assignSpecialties(99, { specialtyIds: [1] }, 7)).rejects.toThrow(
+      'Médico no encontrado',
+    );
+    assignedDoctor();
+    await expect(service.assignSpecialties(1, { specialtyIds: [3, 3] }, 7)).rejects.toThrow(
+      'duplicadas',
+    );
+    specialties.findOne.mockResolvedValueOnce(null);
+    await expect(service.assignSpecialties(1, { specialtyIds: [3] }, 7)).rejects.toThrow(
+      'Especialidad activa',
+    );
+    expect(doctors.save).not.toHaveBeenCalled();
+    expect(history.save).not.toHaveBeenCalled();
+  });
+
+  it.each(['profile', 'account', 'role'] as const)(
+    'rejects additions with an inactive %s',
+    async (target) => {
+      const doctor = assignedDoctor();
+      if (target === 'profile') doctor.isActive = false;
+      if (target === 'account') user.isActive = false;
+      if (target === 'role') user.roles = [];
+      await expect(service.assignSpecialties(1, { specialtyIds: [3] }, 7)).rejects.toThrow(
+        'Solo un médico activo',
+      );
+      expect(doctors.save).not.toHaveBeenCalled();
+    },
+  );
+
+  it('lets multiple doctors offer the same specialty and rejects the transaction if history cannot be written', async () => {
+    const doctor = assignedDoctor();
+    await service.assignSpecialties(1, { specialtyIds: [3] }, 7);
+    doctor.idDoctor = 2;
+    doctor.specialties = [];
+    const failure = new Error('history write failed');
+    history.save.mockRejectedValueOnce(failure);
+    await expect(service.assignSpecialties(2, { specialtyIds: [3] }, 8)).rejects.toBe(failure);
+    await expect(transaction.mock.results[1].value).rejects.toBe(failure);
+    expect(doctors.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads current assignments including inactive specialties without leaking account credentials', async () => {
+    assignedDoctor();
+    const result = await service.getSpecialties(1);
+    expect(result.specialties).toHaveLength(2);
+    expect(result.specialties[0].isActive).toBe(false);
+    expect(JSON.stringify(result)).not.toMatch(/password|private|roles/);
+    doctors.findOne.mockResolvedValueOnce(null);
+    await expect(service.getSpecialties(99)).rejects.toThrow('Médico no encontrado');
   });
 });

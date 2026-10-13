@@ -7,13 +7,18 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Permissions } from '@core/decorators/permissions/permissions.decorator';
 import { CurrentUser } from '@core/decorators/current-user/current-user.decorator';
 import type { JwtPayload } from '@common/types/jwt-payload.type';
-import { DoctorCreateDto, DoctorsQueryDto } from 'src/dtos/doctors/doctors.dto';
+import {
+  DoctorCreateDto,
+  DoctorsQueryDto,
+  DoctorSpecialtiesDto,
+} from 'src/dtos/doctors/doctors.dto';
 import { UsersQueryDto } from 'src/dtos/users/users-query.dto';
 import { DoctorsService } from 'src/services/doctors/doctors.service';
 
@@ -45,6 +50,22 @@ export class DoctorsController {
   @Permissions('doctor.delete')
   deactivate(@Param('idDoctor', ParseIntPipe) id: number, @CurrentUser() user: JwtPayload) {
     return this.service.changeStatus(id, false, user.idUser);
+  }
+
+  @Get(':idDoctor/specialties')
+  @Permissions('doctor.assign-specialties')
+  getSpecialties(@Param('idDoctor', ParseIntPipe) id: number) {
+    return this.service.getSpecialties(id);
+  }
+
+  @Put(':idDoctor/specialties')
+  @Permissions('doctor.assign-specialties')
+  assignSpecialties(
+    @Param('idDoctor', ParseIntPipe) id: number,
+    @Body() dto: DoctorSpecialtiesDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.assignSpecialties(id, dto, user.idUser);
   }
 
   @Patch('reactivate/:idDoctor')

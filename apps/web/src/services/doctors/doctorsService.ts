@@ -16,6 +16,12 @@ export const doctorsService = {
   async deactivate(id: number): Promise<void> {
     await apiClient.delete(`/doctors/${id}`);
   },
+  async getSpecialties(id: number): Promise<Doctor> {
+    return (await apiClient.get<ApiResponse<Doctor>>(`/doctors/${id}/specialties`)).data.data;
+  },
+  async assignSpecialties(id: number, specialtyIds: number[]): Promise<Doctor> {
+    return (await apiClient.put<ApiResponse<Doctor>>(`/doctors/${id}/specialties`, { specialtyIds })).data.data;
+  },
   async reactivate(id: number): Promise<void> {
     await apiClient.patch(`/doctors/reactivate/${id}`);
   },

@@ -25,7 +25,7 @@ vi.mock('react', async (importOriginal) => {
     ...actual,
     useState: (initial: unknown) => {
       const index = mocks.index++;
-      if (index >= 10) return [initial, vi.fn()];
+      if (index >= 11) return [initial, vi.fn()];
       if (!(index in mocks.states)) mocks.states[index] = initial;
       return [
         mocks.states[index],
@@ -54,6 +54,9 @@ vi.mock('@mui/material', async (importOriginal) => {
 });
 vi.mock('@/components/auth/AuthGuard', () => ({
   useAuth: () => ({ hasPermission: (name: string) => !mocks.denied.has(name) }),
+}));
+vi.mock('./DoctorSpecialtiesDialog', () => ({
+  default: ({ idDoctor }: { idDoctor: number }) => <span>Editar asignaciones {idDoctor}</span>,
 }));
 vi.mock('@/services/doctors/doctorsService', () => ({
   doctorsService: { list: mocks.list, deactivate: mocks.deactivate, reactivate: mocks.reactivate },
@@ -88,12 +91,23 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.denied.clear();
   mocks.pagination = null;
-  mocks.states = [query, '', page, { query, refresh: 0 }, 0, null, null, null, false, null];
+  mocks.states = [query, '', page, { query, refresh: 0 }, 0, null, null, null, false, null, null];
   mocks.list.mockResolvedValue(page);
   mocks.deactivate.mockResolvedValue(undefined);
   mocks.reactivate.mockResolvedValue(undefined);
 });
 describe('Doctor administration', () => {
+  it('opens the assignment editor only with assignment and catalog grants', () => {
+    render();
+    mocks.buttons.get('Asignar especialidades')?.onClick?.();
+    expect(render()).toContain('Editar asignaciones 1');
+    mocks.states[10] = null;
+    mocks.denied.add('doctor.assign-specialties');
+    expect(render()).not.toContain('Asignar especialidades');
+    mocks.denied.delete('doctor.assign-specialties');
+    mocks.denied.add('specialty.get-all');
+    expect(render()).not.toContain('Asignar especialidades');
+  });
   it('denies listing without permission and hides creation and deactivation without grants', () => {
     mocks.denied.add('doctor.get-all');
     expect(render()).toContain('No tienes permiso para consultar médicos');

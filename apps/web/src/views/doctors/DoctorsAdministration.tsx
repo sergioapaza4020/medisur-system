@@ -28,6 +28,7 @@ import { doctorsService } from '@/services/doctors/doctorsService';
 import type { Doctor, DoctorsPage, DoctorsQuery } from '@/types/doctors';
 import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 import tableStyles from '@core/styles/table.module.css';
+import DoctorSpecialtiesDialog from './DoctorSpecialtiesDialog';
 
 export default function DoctorsAdministration() {
   const { hasPermission } = useAuth();
@@ -42,6 +43,7 @@ export default function DoctorsAdministration() {
   const [target, setTarget] = useState<Doctor | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [specialtiesTarget, setSpecialtiesTarget] = useState<number | null>(null);
   const saving = useRef(false);
   const loading = completed?.query !== query || completed?.refresh !== refresh;
   useEffect(() => {
@@ -180,6 +182,11 @@ export default function DoctorsAdministration() {
                           <td>{doctor.isActive ? 'Activo' : 'Inactivo'}</td>
                           <td>{doctor.user.isActive ? 'Activa' : 'Inactiva'}</td>
                           <td>
+                            {hasPermission('doctor.assign-specialties') && hasPermission('specialty.get-all') && (
+                              <Button onClick={() => setSpecialtiesTarget(doctor.idDoctor)}>
+                                Asignar especialidades
+                              </Button>
+                            )}
                             {hasPermission(doctor.isActive ? 'doctor.delete' : 'doctor.reactivate') && (
                               <Button
                                 disabled={busy || (!doctor.isActive && !doctor.user.isActive)}
@@ -209,6 +216,18 @@ export default function DoctorsAdministration() {
           )}
         </Stack>
       </CardContent>
+      {specialtiesTarget !== null && (
+        <DoctorSpecialtiesDialog
+          key={specialtiesTarget}
+          idDoctor={specialtiesTarget}
+          onClose={() => setSpecialtiesTarget(null)}
+          onSaved={() => {
+            setSpecialtiesTarget(null);
+            setSuccess('Especialidades del médico actualizadas.');
+            setRefresh((value) => value + 1);
+          }}
+        />
+      )}
       <Dialog
         open={target !== null}
         onClose={() => {
