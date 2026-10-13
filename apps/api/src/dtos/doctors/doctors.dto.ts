@@ -31,3 +31,13 @@ export class DoctorCreateDto {
 }
 
 export class DoctorsQueryDto extends UsersQueryDto {}
+
+export class DoctorSpecialtiesDto {
+  @ApiProperty({ type: [Number], description: 'Asignaciones actuales; [] retira todas.' })
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(100)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  specialtyIds: number[];
+}

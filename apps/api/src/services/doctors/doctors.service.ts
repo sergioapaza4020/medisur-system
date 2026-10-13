@@ -2,8 +2,13 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { Doctor } from 'src/entities/doctors/doctors.entity';
+import { DoctorSpecialtyHistory } from 'src/entities/doctors/doctor-specialty-history.entity';
 import { User } from 'src/entities/users/users.entity';
-import { DoctorCreateDto, DoctorsQueryDto } from 'src/dtos/doctors/doctors.dto';
+import {
+  DoctorCreateDto,
+  DoctorsQueryDto,
+  DoctorSpecialtiesDto,
+} from 'src/dtos/doctors/doctors.dto';
 import { UsersQueryDto } from 'src/dtos/users/users-query.dto';
 import { RecordStatus } from 'src/dtos/common/status-query.dto';
 import { UsersService } from '../users/users.service';
@@ -142,6 +147,15 @@ export class DoctorsService {
             createdBy: authorId,
           }),
         );
+        if (specialties.length)
+          await manager.getRepository(DoctorSpecialtyHistory).save(
+            specialties.map((specialty) => ({
+              doctor,
+              specialty,
+              assigned: true,
+              createdBy: authorId,
+            })),
+          );
         return this.project(doctor);
       });
     } catch (error) {
@@ -165,6 +179,79 @@ export class DoctorsService {
     doctor.isActive = isActive;
     doctor.updatedBy = authorId;
     if (!isActive) doctor.deletedBy = authorId;
-    return this.project(await this.repository.save(doctor));
+    // Save only scalar fields so status changes cannot overwrite concurrent assignments.
+    await this.repository.save({
+      idDoctor,
+      isActive,
+      updatedBy: authorId,
+      ...(!isActive ? { deletedBy: authorId } : {}),
+    });
+    return this.project(doctor);
+  }
+
+  async getSpecialties(idDoctor: number) {
+    const doctor = await this.repository.findOne({
+      where: { idDoctor },
+      relations: { user: true, specialties: true },
+    });
+    if (!doctor) throw new BadRequestException('Médico no encontrado');
+    return this.project(doctor);
+  }
+
+  async assignSpecialties(idDoctor: number, dto: DoctorSpecialtiesDto, authorId: number) {
+    return this.dataSource.transaction(async (manager) => {
+      const doctors = manager.getRepository(Doctor);
+      // Lock without joins (PostgreSQL cannot lock the nullable side of an outer join).
+      const locked = await doctors.findOne({
+        where: { idDoctor },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) throw new BadRequestException('Médico no encontrado');
+      const doctor = await doctors.findOne({
+        where: { idDoctor },
+        relations: { user: { roles: true }, specialties: true },
+      });
+      if (!doctor) throw new BadRequestException('Médico no encontrado');
+      const existing = new Map(
+        doctor.specialties.map((specialty) => [specialty.idSpecialty, specialty]),
+      );
+      const requested = new Set(dto.specialtyIds);
+      if (requested.size !== dto.specialtyIds.length)
+        throw new BadRequestException('No se permiten especialidades duplicadas');
+      const added = dto.specialtyIds.filter((id) => !existing.has(id));
+      if (
+        added.length &&
+        (!doctor.isActive ||
+          !doctor.user.isActive ||
+          !doctor.user.roles.some((role) => role.name === 'DOCTOR' && role.isActive))
+      )
+        throw new BadRequestException(
+          'Solo un médico activo con cuenta y rol DOCTOR activos puede recibir nuevas especialidades',
+        );
+      const specialties: Doctor['specialties'] = [];
+      for (const id of [...requested].sort((a, b) => a - b)) {
+        // Existing inactive assignments may be retained or removed, never newly assigned.
+        specialties.push(
+          existing.get(id) ?? (await this.specialtiesService.getActiveById(id, manager)),
+        );
+      }
+      const removed = doctor.specialties.filter(({ idSpecialty }) => !requested.has(idSpecialty));
+      if (!added.length && !removed.length) return this.project(doctor);
+      doctor.specialties = specialties;
+      doctor.updatedBy = authorId;
+      await doctors.save(doctor);
+      await manager.getRepository(DoctorSpecialtyHistory).save([
+        ...specialties
+          .filter(({ idSpecialty }) => added.includes(idSpecialty))
+          .map((specialty) => ({ doctor, specialty, assigned: true, createdBy: authorId })),
+        ...removed.map((specialty) => ({
+          doctor,
+          specialty,
+          assigned: false,
+          createdBy: authorId,
+        })),
+      ]);
+      return this.project(doctor);
+    });
   }
 }

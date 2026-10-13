@@ -19,6 +19,7 @@ const actions: Record<string, string> = {
   delete: 'Desactivar',
   reactivate: 'Reactivar',
   'assign-roles': 'Asignar roles',
+  'assign-specialties': 'Asignar especialidades',
   'assign-permissions': 'Asignar permisos',
   'revoke-one': 'Revocar sesión',
   'revoke-all': 'Revocar sesiones',

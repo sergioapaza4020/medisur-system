@@ -18,6 +18,8 @@ describe('Doctor HTTP authorization and input validation', () => {
     searchRegistrationUsers: jest.fn(),
     create: jest.fn(),
     changeStatus: jest.fn(),
+    getSpecialties: jest.fn(),
+    assignSpecialties: jest.fn(),
   };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -89,6 +91,52 @@ describe('Doctor HTTP authorization and input validation', () => {
     expect(service.create).not.toHaveBeenCalled();
     await request(server).post('/doctors').send({ idUser: 4 }).expect(201);
     expect(service.create).toHaveBeenCalledWith({ idUser: 4, isActive: true, specialtyIds: [] }, 7);
+  });
+
+  it.each(['get', 'put'] as const)(
+    'protects %s assignments with its specific permission, including SUPERADMIN',
+    async (method) => {
+      await request(server)
+        [method]('/doctors/1/specialties')
+        .send({ specialtyIds: [1, 2] })
+        .expect(403);
+      permissions = ['doctor.create', 'doctor.get-all'];
+      await request(server)
+        [method]('/doctors/1/specialties')
+        .send({ specialtyIds: [1, 2] })
+        .expect(403);
+      expect(service.getSpecialties).not.toHaveBeenCalled();
+      expect(service.assignSpecialties).not.toHaveBeenCalled();
+      permissions = ['doctor.assign-specialties'];
+      await request(server)
+        [method]('/doctors/1/specialties')
+        .send({ specialtyIds: [1, 2], createdBy: 99 })
+        .expect(200);
+      if (method === 'put')
+        expect(service.assignSpecialties).toHaveBeenCalledWith(1, { specialtyIds: [1, 2] }, 7);
+      else expect(service.getSpecialties).toHaveBeenCalledWith(1);
+    },
+  );
+
+  it('requires a complete unique positive ID selection and permits removing all assignments', async () => {
+    permissions = ['doctor.assign-specialties'];
+    for (const body of [
+      {},
+      { specialtyIds: null },
+      { specialtyIds: [1, 1] },
+      { specialtyIds: [0] },
+      { specialtyIds: ['1'] },
+      { specialtyIds: [1.5] },
+      { specialtyIds: Array.from({ length: 101 }, (_, i) => i + 1) },
+    ])
+      await request(server).put('/doctors/1/specialties').send(body).expect(400);
+    await request(server)
+      .put('/doctors/invalid/specialties')
+      .send({ specialtyIds: [] })
+      .expect(400);
+    expect(service.assignSpecialties).not.toHaveBeenCalled();
+    await request(server).put('/doctors/1/specialties').send({ specialtyIds: [] }).expect(200);
+    expect(service.assignSpecialties).toHaveBeenCalledWith(1, { specialtyIds: [] }, 7);
   });
 
   it('cannot grant arbitrary roles or override the audit author', async () => {
