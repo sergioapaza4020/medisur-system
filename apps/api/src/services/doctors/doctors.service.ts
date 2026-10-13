@@ -16,6 +16,10 @@ import { RolesService } from '../roles/roles.service';
 import { SpecialtiesService } from '../specialties/specialties.service';
 import { paginate } from 'src/common/utils/paginate';
 import { statusFilter } from 'src/common/utils/status-filter';
+import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
+import { PaginatedResult } from 'src/common/types/pagination.type';
+import { DoctorSelection, SpecialtySelection } from 'src/common/types/doctor-selection.type';
+import { SpecialtiesQueryDto } from 'src/dtos/specialties/specialties.dto';
 
 @Injectable()
 export class DoctorsService {
@@ -46,6 +50,52 @@ export class DoctorsService {
           name,
           isActive,
         })),
+    };
+  }
+
+  async getSelectionSpecialties(
+    query = new PaginationQueryDto(),
+  ): Promise<PaginatedResult<SpecialtySelection>> {
+    const result = await this.specialtiesService.getAll(
+      Object.assign(new SpecialtiesQueryDto(), query, { status: RecordStatus.ACTIVE }),
+    );
+    return { ...result, data: result.data.map(({ idSpecialty, name }) => ({ idSpecialty, name })) };
+  }
+
+  // Shared operational consultation for selection, schedules and appointments.
+  // Availability here means an active profile, not a free appointment slot.
+  async getBySpecialty(
+    idSpecialty: number,
+    query = new PaginationQueryDto(),
+  ): Promise<PaginatedResult<DoctorSelection>> {
+    await this.specialtiesService.getActiveById(idSpecialty);
+    const qb = this.repository
+      .createQueryBuilder('doctor')
+      .innerJoinAndSelect('doctor.user', 'user')
+      .innerJoin(
+        'doctor.specialties',
+        'specialty',
+        'specialty.idSpecialty = :idSpecialty AND specialty.isActive = true',
+        { idSpecialty },
+      )
+      .innerJoin(
+        'user.roles',
+        'doctorRole',
+        'doctorRole.name = :doctorRoleName AND doctorRole.isActive = true',
+        { doctorRoleName: 'DOCTOR' },
+      )
+      .select(['doctor.idDoctor', 'user.idUser', 'user.name', 'user.lastname'])
+      .andWhere('doctor.isActive = true')
+      .andWhere('user.isActive = true')
+      .orderBy('doctor.idDoctor', 'ASC');
+    const result = await paginate(qb, query);
+    return {
+      ...result,
+      data: result.data.map(({ idDoctor, user }) => ({
+        idDoctor,
+        name: user.name,
+        lastname: user.lastname,
+      })),
     };
   }
 

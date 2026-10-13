@@ -6,9 +6,10 @@ import {
   MEDISUR_PERMISSION_NAMES,
   MEDISUR_ROLES,
   MEDISUR_STAFF_PERMISSION_NAMES,
+  MEDISUR_PATIENT_PERMISSION_NAMES,
 } from './access-control.catalog';
 
-// Called inside a transaction. Repeated runs repair the explicit administrative grants only.
+// Called inside a transaction. Repeated runs repair only the explicit base-role grants.
 export async function seedAccessControl(manager: EntityManager) {
   const permissionRepository = manager.getRepository(Permission);
   const roleRepository = manager.getRepository(Role);
@@ -32,8 +33,7 @@ export async function seedAccessControl(manager: EntityManager) {
         }),
       );
     }
-    // The current catalog contains administrative resources only. Do not grant
-    // custom permissions from the database or reactivate disabled capabilities.
+    // Do not grant custom permissions from the database or reactivate disabled capabilities.
     if (permission.isActive) permissions.push(permission);
   }
 
@@ -45,7 +45,11 @@ export async function seedAccessControl(manager: EntityManager) {
           ? permissions.filter((permission) =>
               MEDISUR_STAFF_PERMISSION_NAMES.includes(permission.name),
             )
-          : [];
+          : definition.name === 'PATIENT'
+            ? permissions.filter((permission) =>
+                MEDISUR_PATIENT_PERMISSION_NAMES.includes(permission.name),
+              )
+            : [];
     const existing = await roleRepository.findOne({
       where: { name: definition.name },
       relations: { permissions: true },

@@ -10,6 +10,7 @@ const domains: Record<string, string> = {
 const actions: Record<string, string> = {
   'create-patient': 'Registrar pacientes',
   'get-all': 'Consultar listado',
+  'get-by-specialty': 'Consultar médicos por especialidad',
   'get-one-by-id': 'Consultar por identificador',
   'get-one-by-name': 'Consultar por nombre',
   'get-one-by-email': 'Consultar por correo',

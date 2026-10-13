@@ -1,9 +1,24 @@
 import { apiClient } from '../http/axiosClient';
 
 import type { ApiResponse } from '@/types/auth';
-import type { Doctor, DoctorAccountsPage, DoctorCreate, DoctorsPage, DoctorsQuery } from '@/types/doctors';
+import type {
+  Doctor,
+  DoctorAccountsPage,
+  DoctorCreate,
+  DoctorsPage,
+  DoctorsQuery,
+  DoctorSelectionPage,
+  SpecialtySelectionPage,
+} from '@/types/doctors';
+import type { PaginationQuery } from '@/types/pagination';
 
 export const doctorsService = {
+  async selectionSpecialties(query: PaginationQuery): Promise<SpecialtySelectionPage> {
+    return (await apiClient.get<SpecialtySelectionPage>('/doctors/selection-specialties', { params: query })).data;
+  },
+  async bySpecialty(id: number, query: PaginationQuery): Promise<DoctorSelectionPage> {
+    return (await apiClient.get<DoctorSelectionPage>(`/doctors/by-specialty/${id}`, { params: query })).data;
+  },
   async list(query: DoctorsQuery): Promise<DoctorsPage> {
     return (await apiClient.get<DoctorsPage>('/doctors', { params: query })).data;
   },
