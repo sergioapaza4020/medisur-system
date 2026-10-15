@@ -106,6 +106,58 @@ describe('Operational doctor selection', () => {
     });
   });
 
+  it('publishes operational doctors with active specialties and no personal or administrative fields', async () => {
+    const repository = source.getRepository(Doctor);
+    const qb = repository.createQueryBuilder('doctor');
+    jest.spyOn(repository, 'createQueryBuilder').mockReturnValue(qb);
+    jest.spyOn(qb, 'getManyAndCount').mockResolvedValue([
+      [
+        {
+          idDoctor: 4,
+          isActive: true,
+          user: {
+            idUser: 10,
+            name: 'Ana',
+            lastname: 'Pérez',
+            email: 'private@example.com',
+            ci: 'private',
+            isActive: true,
+          },
+          specialties: [
+            { idSpecialty: 2, name: 'Cardiología', isActive: true },
+            { idSpecialty: 3, name: 'Inactiva', isActive: false },
+          ],
+        } as Doctor,
+      ],
+      1,
+    ]);
+    const result = await service.getPublicPage(
+      Object.assign(new PaginationQueryDto(), {
+        page: 1,
+        limit: 6,
+        status: 'all',
+        search: 'private',
+      }),
+    );
+    expect(result.data).toEqual([
+      {
+        idDoctor: 4,
+        name: 'Ana',
+        lastname: 'Pérez',
+        specialties: [{ idSpecialty: 2, name: 'Cardiología' }],
+      },
+    ]);
+    expect(qb.getParameters()).toMatchObject({ isActive: true, doctorRoleName: 'DOCTOR' });
+    expect(qb.getParameters()).not.toHaveProperty('search');
+    const sql = qb.getQuery();
+    expect(sql).toContain('"user"."is_active" = true');
+    expect(sql).toContain('"doctorRole"."is_active" = true');
+    expect(qb.expressionMap.take).toBe(6);
+    expect(JSON.stringify(result)).not.toMatch(
+      /private|Inactiva|email|ci"|idUser|isActive|createdBy/,
+    );
+  });
+
   it.each(['nonexistent', 'inactive'])(
     'rejects an %s specialty before querying doctors',
     async () => {

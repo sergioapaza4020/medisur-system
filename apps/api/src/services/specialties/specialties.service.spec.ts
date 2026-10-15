@@ -47,6 +47,18 @@ describe('SpecialtiesService', () => {
     });
   });
 
+  it('publishes only active specialty names with bounded pagination, ignoring state overrides', async () => {
+    const result = await service.getPublicPage({
+      page: 1,
+      limit: 8,
+      status: 'all',
+    } as SpecialtiesQueryDto);
+    expect(result.data).toEqual([{ idSpecialty: 1, name: 'Cardiología' }]);
+    expect(qb.andWhere).toHaveBeenCalledWith('specialty.isActive = :isActive', { isActive: true });
+    expect(qb.take).toHaveBeenCalledWith(8);
+    expect(JSON.stringify(result)).not.toMatch(/createdBy|isActive/);
+  });
+
   it('rejects duplicate active, inactive and soft deleted names', async () => {
     for (const isActive of [true, false]) {
       repository.find.mockResolvedValue([{ ...specialty, isActive }]);

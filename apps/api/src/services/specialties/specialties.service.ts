@@ -10,10 +10,24 @@ import {
 import { paginate } from 'src/common/utils/paginate';
 import { statusFilter } from 'src/common/utils/status-filter';
 import { PaginatedResult } from 'src/common/types/pagination.type';
+import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
+import { RecordStatus } from 'src/dtos/common/status-query.dto';
+import { SpecialtySelection } from 'src/common/types/doctor-selection.type';
 
 @Injectable()
 export class SpecialtiesService {
   constructor(@InjectRepository(Specialty) private readonly repository: Repository<Specialty>) {}
+
+  async getPublicPage(query: PaginationQueryDto): Promise<PaginatedResult<SpecialtySelection>> {
+    const result = await this.getAll(
+      Object.assign(new SpecialtiesQueryDto(), {
+        page: query.page,
+        limit: query.limit,
+        status: RecordStatus.ACTIVE,
+      }),
+    );
+    return { ...result, data: result.data.map(({ idSpecialty, name }) => ({ idSpecialty, name })) };
+  }
 
   async getAll(query = new SpecialtiesQueryDto()): Promise<PaginatedResult<Specialty>> {
     const qb = this.repository

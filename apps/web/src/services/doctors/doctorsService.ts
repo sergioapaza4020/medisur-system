@@ -1,4 +1,5 @@
 import { apiClient } from '../http/axiosClient';
+import { publicRead } from '../http/publicRead';
 
 import type { ApiResponse } from '@/types/auth';
 import type {
@@ -9,10 +10,14 @@ import type {
   DoctorsQuery,
   DoctorSelectionPage,
   SpecialtySelectionPage,
+  PublicDoctorsPage,
 } from '@/types/doctors';
 import type { PaginationQuery } from '@/types/pagination';
 
 export const doctorsService = {
+  publicPage(query: PaginationQuery): Promise<PublicDoctorsPage> {
+    return publicRead('/doctors/public', query);
+  },
   async selectionSpecialties(query: PaginationQuery): Promise<SpecialtySelectionPage> {
     return (await apiClient.get<SpecialtySelectionPage>('/doctors/selection-specialties', { params: query })).data;
   },

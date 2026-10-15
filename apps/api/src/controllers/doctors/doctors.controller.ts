@@ -23,12 +23,19 @@ import {
 import { UsersQueryDto } from 'src/dtos/users/users-query.dto';
 import { DoctorsService } from 'src/services/doctors/doctors.service';
 import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
+import { Public } from '@core/decorators/public/public.decorator';
 
 @ApiBearerAuth('access-token')
 @ApiTags('Doctors')
 @Controller('doctors')
 export class DoctorsController {
   constructor(private readonly service: DoctorsService) {}
+
+  @Public()
+  @Get('public')
+  getPublicPage(@Query() query: PaginationQueryDto) {
+    return this.service.getPublicPage(query);
+  }
 
   @Get('selection-specialties')
   @Permissions('doctor.get-by-specialty')
