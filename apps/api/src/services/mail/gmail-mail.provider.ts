@@ -7,20 +7,22 @@ import type { MailMessage, MailResult } from './mail.transport';
 import { gmailMailConfig } from './mail.config';
 
 @Injectable()
-export class GmailMailProvider extends MailTransport implements OnModuleDestroy {
-  private readonly logger = new Logger(GmailMailProvider.name);
+export class GmailSmtpMailProvider extends MailTransport implements OnModuleDestroy {
+  private readonly logger = new Logger(GmailSmtpMailProvider.name);
   private readonly transporter: Transporter<SMTPSentMessageInfo>;
   private readonly user: string;
+  private readonly from: { name: string; address: string };
 
   constructor(config: ConfigService) {
     super();
-    const { user, clientId, clientSecret, refreshToken, timeout } = gmailMailConfig(config);
+    const { user, appPassword, fromEmail, fromName, timeout } = gmailMailConfig(config);
     this.user = user;
+    this.from = { name: fromName, address: fromEmail };
     this.transporter = createTransport({
       host: 'smtp.gmail.com',
       port: 465,
       secure: true,
-      auth: { type: 'OAuth2', user, clientId, clientSecret, refreshToken, requestTimeout: timeout },
+      auth: { user, pass: appPassword },
       connectionTimeout: timeout,
       greetingTimeout: timeout,
       socketTimeout: timeout,
@@ -36,7 +38,7 @@ export class GmailMailProvider extends MailTransport implements OnModuleDestroy 
     try {
       const info = await this.transporter.sendMail({
         ...message,
-        from: { name: 'MEDISUR', address: this.user },
+        from: this.from,
         // SMTP Message-ID supports tracing; it does not guarantee deduplication.
         messageId: `<${idempotencyKey}@${this.user.split('@')[1]}>`,
       });
@@ -62,14 +64,15 @@ export class GmailMailProvider extends MailTransport implements OnModuleDestroy 
         'EHLO',
         'HELO',
         'STARTTLS',
-        'AUTH XOAUTH2',
+        'AUTH LOGIN',
+        'AUTH PLAIN',
         'AUTH',
         'MAIL FROM',
         'RCPT TO',
         'DATA',
       ];
       this.logger.error({
-        message: 'Falló el envío SMTP/OAuth2 de Gmail',
+        message: 'Falló el envío SMTP de Gmail',
         code:
           typeof details.code === 'string' && codes.includes(details.code)
             ? details.code

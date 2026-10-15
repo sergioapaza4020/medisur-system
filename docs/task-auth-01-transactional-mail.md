@@ -1,56 +1,51 @@
-# TASK-AUTH-01: Correo transaccional con Gmail OAuth2
+# TASK-AUTH-01: Correo transaccional con Gmail SMTP + App Password
 
-## Arquitectura
+## Arquitectura y configuración
 
-Los servicios de negocio consumen `MailService`, que valida destinatarios/enlaces y renderiza las plantillas existentes. `MailTransport` sigue siendo el contrato desacoplado. `MailModule` conecta ese contrato con `GmailMailProvider`, el único componente que conoce Nodemailer. No cambian `MailService.send()`, autenticación, recuperación ni los templates.
+Los servicios de negocio siguen dependiendo de `MailService.send()`, que valida entradas y renderiza las plantillas existentes. `MailModule` enlaza `MailTransport` con `GmailSmtpMailProvider` (en `gmail-mail.provider.ts`). Solo este provider utiliza Nodemailer, ya instalado con tipos incluidos. No se modifican autenticación, recuperación de contraseña ni frontend. Resend ya no tiene implementación ni dependencias en este repositorio.
 
-## Configuración
+Configurar en el entorno del backend o en `apps/api/.env`, ignorado por Git. Nunca usar `NEXT_PUBLIC_*` ni versionar secretos:
 
-Configurar exclusivamente en el entorno del backend o en `apps/api/.env`, nunca versionar secretos ni usar `NEXT_PUBLIC_*`:
+| Variable                  | Uso                                                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `MAIL_PROVIDER`           | `gmail-smtp`; otros valores son rechazados                                                                              |
+| `MAIL_GMAIL_USER`         | Cuenta Gmail con verificación en dos pasos habilitada                                                                   |
+| `MAIL_GMAIL_APP_PASSWORD` | App Password generada manualmente; se ignoran espacios de presentación de Google; nunca usar la contraseña de la cuenta |
+| `MAIL_FROM_EMAIL`         | Debe coincidir con `MAIL_GMAIL_USER`; no se configuran aliases                                                          |
+| `MAIL_FROM_NAME`          | Nombre visible; predeterminado `MEDISUR`                                                                                |
+| `MAIL_TIMEOUT_MS`         | Entero entre 1000 y 30000 ms; predeterminado 10000                                                                      |
+| `MAIL_TEST_TO`            | Destino de la prueba manual                                                                                             |
 
-| Variable                    | Uso                                                      |
-| --------------------------- | -------------------------------------------------------- |
-| `MAIL_PROVIDER`             | `gmail`; obligatorio, otros proveedores son rechazados   |
-| `MAIL_GMAIL_USER`           | Dirección de la cuenta Gmail autorizada                  |
-| `MAIL_GOOGLE_CLIENT_ID`     | Client ID OAuth de Google                                |
-| `MAIL_GOOGLE_CLIENT_SECRET` | Client secret OAuth; secreto                             |
-| `MAIL_GOOGLE_REFRESH_TOKEN` | Refresh token de la cuenta autorizada; secreto           |
-| `MAIL_TIMEOUT_MS`           | Entre 1000 y 30000 ms; predeterminado 10000              |
-| `MAIL_TEST_TO`              | Correo real válido para la utilidad de prueba            |
-| `FRONTEND_URL`              | Origen existente permitido para enlaces de autenticación |
+Se requiere una cuenta Gmail, 2-Step Verification y una App Password. Ver la [guía oficial de Nodemailer para Gmail](https://nodemailer.com/guides/using-gmail). Para producción institucional se puede migrar posteriormente a un proveedor transaccional con dominio autenticado, conservando `MailTransport`.
 
-Al inicializar el provider se validan todas las variables obligatorias. Una configuración incompleta impide iniciar los módulos que importan MailModule, incluida autenticación. Los errores indican únicamente la variable inválida, nunca su valor. Las variables anteriores de API key y remitente independiente ya no se utilizan.
+La validación existente en `mail.config.ts` se ejecuta al construir el provider: rechaza configuración incompleta, emails inválidos, remitentes diferentes y saltos de línea en el nombre. Los errores indican únicamente la variable inválida. Se conserva el comportamiento existente: una configuración inválida impide iniciar los módulos que importan `MailModule`. No se establece conexión de red ni se ejecuta `verify()` al arrancar o por cada correo.
 
-## OAuth2 y SMTP
+## Transporte y errores
 
-Crear un cliente OAuth en Google Cloud, configurar la pantalla de consentimiento y autorizar la cuenta indicada en MAIL_GMAIL_USER con acceso offline para obtener un refresh token. El consentimiento debe incluir el scope SMTP `https://mail.google.com/`. Seguir la [guía oficial de Nodemailer para Gmail](https://nodemailer.com/usage/using-gmail/) y la [documentación OAuth2 de Gmail](https://developers.google.com/workspace/gmail/imap/xoauth2-protocol). Guardar client secret y refresh token únicamente en la configuración privada del backend.
+Se utiliza `smtp.gmail.com:465`, TLS y `auth: { user, pass }`. No se requiere Google Cloud, OAuth2, access token ni refresh token; las variables `MAIL_GOOGLE_CLIENT_ID`, `MAIL_GOOGLE_CLIENT_SECRET` y `MAIL_GOOGLE_REFRESH_TOKEN` se retiran del código y del ejemplo. Si persisten en un entorno privado, ya no se consultan y pueden retirarse de su configuración.
 
-Se utiliza `smtp.gmail.com:465`, TLS y `auth.type = OAuth2`. Nodemailer obtiene y renueva automáticamente el access token con clientId, clientSecret y refreshToken; no se configura contraseña ni access token estático. Si el refresh token es revocado, expirado o carece del scope adecuado, el envío falla y es necesario volver a autorizar la cuenta. Ver [renovación integrada de Nodemailer](https://nodemailer.com/smtp/oauth2).
+`MAIL_TIMEOUT_MS` configura los límites soportados de conexión, saludo, socket y DNS. Son límites de conexión/inactividad, no un plazo total exacto de entrega. Se conserva la validación de certificados; logging y debug de Nodemailer quedan desactivados.
 
-El remitente es siempre `MEDISUR <MAIL_GMAIL_USER>`. No hay configuración de un email From independiente. Los límites SMTP de conexión, saludo, socket y DNS, así como la petición de renovación OAuth, reciben MAIL_TIMEOUT_MS. Son límites por fase/inactividad, no una garantía de que el envío completo dure exactamente ese tiempo. TLS conserva validación de certificados; debug y logging internos de Nodemailer permanecen apagados.
+El contrato sigue devolviendo `{ accepted: true }` o `{ accepted: false, reason }`. Se comprueba que SMTP aceptó al destinatario. Los errores devuelven `provider-error`; Nest Logger registra solamente un mensaje fijo, códigos/comandos de una lista permitida y un código de respuesta numérico válido. Nunca registra el error libre, la respuesta SMTP, credenciales o contenido. El transporte se cierra al destruir el módulo.
 
-## Contrato, errores e idempotencia
-
-El resultado sigue siendo `{ accepted: true }` o `{ accepted: false, reason }`. El provider comprueba la aceptación del destinatario; no basta con que sendMail resuelva. Las plantillas reciben los mismos subject, html, text y to. MailService mantiene sus validaciones de enlaces, expiración e inputs.
-
-Los fallos SMTP/OAuth/red devuelven `provider-error`. Nest Logger registra un mensaje fijo, códigos de error y comandos de una lista permitida, y responseCode numérico válido. Nunca registra el error libre, respuesta SMTP, credenciales, tokens, destinatarios ni contenido. La configuración devuelve errores seguros y explícitos al inicializar.
-
-El segundo argumento de send conserva su firma y ahora produce un Message-ID estable. **SMTP no garantiza idempotencia ni deduplicación por Message-ID.** No se añaden reintentos automáticos ni almacenamiento de envíos. Tras un timeout puede existir aceptación incierta; reintentar puede duplicar el correo. Si una futura historia necesita entrega exactamente una vez deberá resolverlo con persistencia/outbox, dentro de su alcance.
+El segundo argumento de `send` conserva su firma y genera un Message-ID estable. SMTP no garantiza deduplicación por Message-ID. No se agregan reintentos automáticos; después de un timeout la aceptación puede ser incierta.
 
 ## Prueba manual
 
-Con todas las variables configuradas:
+Con las variables locales configuradas:
 
 ```sh
+pnpm --filter medisur-system-backend start
+# En otra terminal:
 pnpm --filter medisur-system-backend mail:test
 ```
 
-La utilidad carga ConfigModule y MailModule sin PostgreSQL/Redis, lee MAIL_TEST_TO y envía `{ kind: 'test', to }` mediante MailService. Muestra aceptación o motivo controlado, permite consultar los diagnósticos seguros y cierra siempre ApplicationContext. Devuelve código uno si la configuración o el envío falla. Nunca imprime credenciales.
+`mail:test` reutiliza un contexto Nest con ConfigModule y MailModule, sin requerir PostgreSQL/Redis ni crear endpoints públicos. Envía a `MAIL_TEST_TO` mediante `MailService`, cierra el contexto y devuelve código uno ante configuración inválida o fallo. No imprime secretos.
 
-Ejecutar dos veces y verificar ambos correos en la bandeja destino, remitente MEDISUR, asunto de prueba y ausencia de errores OAuth. Aceptación SMTP no garantiza entrega en la bandeja. No sustituir esta comprobación por mocks ni generar/envíar credenciales en chats.
+El asunto es `Prueba de correo MEDISUR`; el contenido incluye `El servicio de correo transaccional de MEDISUR está configurado correctamente.`. Confirmar en la cuenta destino la recepción (incluido spam), el remitente `MEDISUR <MAIL_FROM_EMAIL>`, asunto y contenido. La aceptación SMTP confirma autenticación y aceptación del mensaje, pero no confirma su llegada a la bandeja.
 
-## Archivos y pruebas
+Las pruebas unitarias mockean Nodemailer y no se conectan a Gmail. Cubren transporte, credencial sintética generada en memoria, remitente, timeouts, configuración inválida, aceptación/rechazo, errores sanitizados y cierre. Se conservan las pruebas de MailService, plantillas y comando interno.
 
-Se añade `nodemailer` al paquete backend mediante pnpm; la versión instalada incluye sus propios tipos TypeScript. El provider HTTP anterior y sus tests fueron sustituidos por `gmail-mail.provider.ts` y `gmail-mail.provider.spec.ts`. Se añade `mail.config.ts` y `mail-test.spec.ts`. Se actualizan MailModule, mail-test, .env.example y esta documentación. Los contratos, servicio y templates genéricos se conservan.
+## Verificación local — 15 de octubre de 2026
 
-Las pruebas automatizadas mockean Nodemailer y no envían correos. Cubren OAuth2 y timeouts, configuración incompleta/inválida, remitente, aceptación/rechazo, dos envíos, cierre, logs sin secretos, delegación de MailService, templates y script mail:test. La entrega y renovación contra Gmail real requieren credenciales locales y permanecen pendientes hasta ejecutar la prueba manual.
+El backend arrancó correctamente con las variables locales. El comando mail:test terminó con código cero y Gmail aceptó el correo usando App Password. El usuario confirmó la recepción del correo de prueba con remitente y contenido correctos. La aceptación SMTP y la recepción en la cuenta destino quedaron verificadas.

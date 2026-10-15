@@ -18,13 +18,13 @@ const escapeHtml = (value: string) =>
 export function renderMail(input: TransactionalMail) {
   const subject =
     input.kind === 'test'
-      ? 'MEDISUR: correo de prueba'
+      ? 'Prueba de correo MEDISUR'
       : input.kind === 'password-reset'
         ? 'MEDISUR: recuperación de contraseña'
         : 'MEDISUR: inicio de sesión';
   const introduction =
     input.kind === 'test'
-      ? 'El servicio de correo transaccional de MEDISUR está configurado.'
+      ? 'El servicio de correo transaccional de MEDISUR está configurado correctamente.'
       : input.kind === 'password-reset'
         ? 'Utiliza el siguiente enlace para restablecer tu contraseña.'
         : input.kind === 'login-link'

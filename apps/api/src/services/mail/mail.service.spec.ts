@@ -70,6 +70,14 @@ describe('Transactional mail', () => {
     expect(warning).not.toHaveBeenCalled();
   });
 
+  it('renders the SMTP test message with the expected subject and content', () => {
+    const mail = renderMail({ kind: 'test', to: 'patient@example.com' });
+    expect(mail.subject).toBe('Prueba de correo MEDISUR');
+    const content =
+      'El servicio de correo transaccional de MEDISUR está configurado correctamente.';
+    expect(mail.text).toContain(content);
+    expect(mail.html).toContain(content);
+  });
   it('escapes values in HTML while preserving the plain text link', () => {
     const url = 'https://medisur.example/reset?token=a&value="<script>"';
     const mail = renderMail({
