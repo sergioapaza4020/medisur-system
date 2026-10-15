@@ -15,12 +15,20 @@ import { CurrentUser } from '@core/decorators/current-user/current-user.decorato
 import type { JwtPayload } from '@common/types/jwt-payload.type';
 import { SpecialtiesQueryDto, SpecialtyWriteDto } from 'src/dtos/specialties/specialties.dto';
 import { SpecialtiesService } from 'src/services/specialties/specialties.service';
+import { Public } from '@core/decorators/public/public.decorator';
+import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
 
 @ApiBearerAuth('access-token')
 @ApiTags('Specialties')
 @Controller('specialties')
 export class SpecialtiesController {
   constructor(private readonly service: SpecialtiesService) {}
+
+  @Public()
+  @Get('public')
+  getPublicPage(@Query() query: PaginationQueryDto) {
+    return this.service.getPublicPage(query);
+  }
 
   @Get()
   @Permissions('specialty.get-all')

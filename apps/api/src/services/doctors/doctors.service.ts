@@ -18,7 +18,11 @@ import { paginate } from 'src/common/utils/paginate';
 import { statusFilter } from 'src/common/utils/status-filter';
 import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
 import { PaginatedResult } from 'src/common/types/pagination.type';
-import { DoctorSelection, SpecialtySelection } from 'src/common/types/doctor-selection.type';
+import {
+  DoctorSelection,
+  PublicDoctor,
+  SpecialtySelection,
+} from 'src/common/types/doctor-selection.type';
 import { SpecialtiesQueryDto } from 'src/dtos/specialties/specialties.dto';
 
 @Injectable()
@@ -50,6 +54,28 @@ export class DoctorsService {
           name,
           isActive,
         })),
+    };
+  }
+
+  async getPublicPage(query: PaginationQueryDto): Promise<PaginatedResult<PublicDoctor>> {
+    // Reuse operational eligibility (active profile, account and DOCTOR role), never the admin projection.
+    const result = await this.getAll(
+      Object.assign(new DoctorsQueryDto(), {
+        page: query.page,
+        limit: query.limit,
+        status: RecordStatus.ACTIVE,
+      }),
+    );
+    return {
+      ...result,
+      data: result.data.map(({ idDoctor, user, specialties }) => ({
+        idDoctor,
+        name: user.name,
+        lastname: user.lastname,
+        specialties: specialties
+          .filter(({ isActive }) => isActive)
+          .map(({ idSpecialty, name }) => ({ idSpecialty, name })),
+      })),
     };
   }
 

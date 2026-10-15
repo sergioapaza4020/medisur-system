@@ -32,3 +32,8 @@ export interface DoctorSelection {
 export type SpecialtySelection = Pick<Specialty, 'idSpecialty' | 'name'>;
 export type DoctorSelectionPage = PaginatedResponse<DoctorSelection>;
 export type SpecialtySelectionPage = PaginatedResponse<SpecialtySelection>;
+
+export interface PublicDoctor extends DoctorSelection {
+  specialties: SpecialtySelection[];
+}
+export type PublicDoctorsPage = PaginatedResponse<PublicDoctor>;
