@@ -17,6 +17,14 @@ export interface AdministrativeUser {
 }
 
 export type UserFields = Pick<AdministrativeUser, 'email' | 'name' | 'lastname' | 'ci'>;
+export type MyAccount = UserFields & {
+  avatarUrl: string | null;
+  avatarUpload: { maxSize: number; mimeTypes: string[] };
+};
+export interface AvatarResult {
+  avatarUrl: string | null;
+  cleanupPending: boolean;
+}
 export type CreateUser = UserFields & { password: string; roleNames: string[] };
 export type UpdateUser = Partial<UserFields>;
 export interface UsersQuery extends PaginationQuery {

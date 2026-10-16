@@ -10,5 +10,6 @@ export interface SpecialtySelection {
 }
 
 export interface PublicDoctor extends DoctorSelection {
+  avatarUrl: string | null;
   specialties: SpecialtySelection[];
 }

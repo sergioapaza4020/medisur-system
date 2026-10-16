@@ -34,6 +34,7 @@ export type DoctorSelectionPage = PaginatedResponse<DoctorSelection>;
 export type SpecialtySelectionPage = PaginatedResponse<SpecialtySelection>;
 
 export interface PublicDoctor extends DoctorSelection {
+  avatarUrl?: string | null;
   specialties: SpecialtySelection[];
 }
 export type PublicDoctorsPage = PaginatedResponse<PublicDoctor>;

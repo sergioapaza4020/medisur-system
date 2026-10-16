@@ -7,6 +7,7 @@ import { DoctorsController } from 'src/controllers/doctors/doctors.controller';
 import { UsersModule } from '../users/users.module';
 import { RolesModule } from '../roles/roles.module';
 import { SpecialtiesModule } from '../specialties/specialties.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { SpecialtiesModule } from '../specialties/specialties.module';
     UsersModule,
     RolesModule,
     SpecialtiesModule,
+    StorageModule,
   ],
   providers: [DoctorsService],
   controllers: [DoctorsController],

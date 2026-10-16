@@ -11,6 +11,7 @@ import { DoctorsService } from './doctors.service';
 import { UsersService } from '../users/users.service';
 import { RolesService } from '../roles/roles.service';
 import { SpecialtiesService } from '../specialties/specialties.service';
+import { StorageService } from '../storage/storage.service';
 
 class QueryDataSource extends DataSource {
   prepare() {
@@ -24,12 +25,19 @@ describe('Operational doctor selection', () => {
     entities: [Doctor, User, Specialty, Role, Permission, UserSession],
   });
   const specialties = { getActiveById: jest.fn(), getAll: jest.fn() };
+  const provider = {
+    upload: jest.fn(),
+    delete: jest.fn(),
+    getPublicUrl: jest.fn((key: string) => `https://public.example.test/${key}`),
+  };
+  const storage = new StorageService(provider, {} as never);
   const service = new DoctorsService(
     source.getRepository(Doctor),
     source,
     {} as UsersService,
     {} as RolesService,
     specialties as unknown as SpecialtiesService,
+    storage,
   );
   beforeAll(async () => {
     await source.prepare();
@@ -144,6 +152,7 @@ describe('Operational doctor selection', () => {
         idDoctor: 4,
         name: 'Ana',
         lastname: 'Pérez',
+        avatarUrl: null,
         specialties: [{ idSpecialty: 2, name: 'Cardiología' }],
       },
     ]);
@@ -156,6 +165,82 @@ describe('Operational doctor selection', () => {
     expect(JSON.stringify(result)).not.toMatch(
       /private|Inactiva|email|ci"|idUser|isActive|createdBy/,
     );
+  });
+
+  it('resolves each public doctor avatar from its own user and reflects replacements without changing private projections', async () => {
+    const repository = source.getRepository(Doctor);
+    const qb = repository.createQueryBuilder('doctor');
+    jest.spyOn(repository, 'createQueryBuilder').mockReturnValue(qb);
+    const firstKey = 'images/profiles/12345678-abcd-4abc-8abc-123456789abc.png';
+    const secondKey = 'images/profiles/87654321-abcd-4abc-8abc-123456789abc.png';
+    const records = [
+      {
+        idDoctor: 4,
+        isActive: true,
+        user: {
+          idUser: 10,
+          name: 'Ana',
+          lastname: 'Perez',
+          avatar: firstKey,
+          email: 'private@example.test',
+          ci: '123456',
+          password: 'secret',
+          roles: [],
+        },
+        specialties: [],
+      },
+      {
+        idDoctor: 5,
+        isActive: true,
+        user: { idUser: 11, name: 'Luis', lastname: 'Lopez', avatar: secondKey },
+        specialties: [],
+      },
+      {
+        idDoctor: 6,
+        isActive: true,
+        user: { idUser: 12, name: 'Maria', lastname: 'Rojas', avatar: null },
+        specialties: [],
+      },
+      {
+        idDoctor: 7,
+        isActive: true,
+        user: {
+          idUser: 13,
+          name: 'Juan',
+          lastname: 'Diaz',
+          avatar: 'https://external.example/legacy.png',
+        },
+        specialties: [],
+      },
+    ] as Doctor[];
+    jest.spyOn(qb, 'getManyAndCount').mockResolvedValue([records, records.length]);
+    const query = Object.assign(new PaginationQueryDto(), { page: 1, limit: 6 });
+    const result = await service.getPublicPage(query);
+    expect(result.data.map(({ idDoctor, avatarUrl }) => ({ idDoctor, avatarUrl }))).toEqual([
+      { idDoctor: 4, avatarUrl: `https://public.example.test/${firstKey}` },
+      { idDoctor: 5, avatarUrl: `https://public.example.test/${secondKey}` },
+      { idDoctor: 6, avatarUrl: null },
+      { idDoctor: 7, avatarUrl: null },
+    ]);
+    expect(provider.getPublicUrl).toHaveBeenCalledWith(firstKey);
+    expect(provider.getPublicUrl).toHaveBeenCalledWith(secondKey);
+    for (const doctor of result.data)
+      expect(Object.keys(doctor).sort()).toEqual([
+        'avatarUrl',
+        'idDoctor',
+        'lastname',
+        'name',
+        'specialties',
+      ]);
+    const newKey = 'images/profiles/12345678-abcd-4abc-8abc-123456789abc.webp';
+    records[0].user.avatar = newKey;
+    expect((await service.getPublicPage(query)).data[0].avatarUrl).toBe(
+      `https://public.example.test/${newKey}`,
+    );
+    expect((await service.getAll()).data[0].user).not.toHaveProperty('avatar');
+    expect((await service.getAll()).data[0].user).not.toHaveProperty('avatarUrl');
+    expect(provider.upload).not.toHaveBeenCalled();
+    expect(provider.delete).not.toHaveBeenCalled();
   });
 
   it.each(['nonexistent', 'inactive'])(

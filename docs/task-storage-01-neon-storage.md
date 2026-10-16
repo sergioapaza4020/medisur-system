@@ -21,7 +21,13 @@ Servicio de negocio → StorageService → StorageProvider → NeonStorageProvid
 - `uploadImage({ buffer, mimeType, context? })` devuelve `{ key, url }` después de confirmar la subida.
 - `getPublicUrl(key)` obtiene la referencia pública de una key administrada; no comprueba existencia.
 - `delete(key)` elimina una key administrada; repetir una eliminación es idempotente. Errores de bucket/permisos se propagan como errores controlados.
-- `replace(previousKey, input)` devuelve `{ key, url, cleanupPending, previousKey? }`.
+- `replace(previousKey, input, persist?)` devuelve `{ key, url, cleanupPending, previousKey? }`.
+  La integración posterior de avatar admite `previousKey=null` para la primera
+  imagen y un callback opcional de persistencia. Sube primero, espera a que ese
+  callback confirme la escritura en BD y solo entonces elimina la imagen anterior.
+  Si falla la persistencia, intenta eliminar la imagen nueva y conserva la anterior.
+- `getImagePolicy()` expone solamente `{ maxSize, mimeTypes }`, para aplicar la misma
+  política en el receptor multipart y mostrarla en frontend sin revelar configuración privada.
 
 Las keys tienen el formato `images/<uuid-v4>.<ext>` o `images/<contexto>/<uuid-v4>.<ext>`. El contexto es opcional, un único segmento de 1–40 caracteres: empieza con letra minúscula y admite letras, números y guion. Debe elegirlo el backend. No se acepta una ruta original, URL, traversal, segmentos anidados, porcentajes o nombres de persona. Delete y getPublicUrl solo admiten este namespace y formato; por ejemplo, no pueden borrar `logo.png`.
 

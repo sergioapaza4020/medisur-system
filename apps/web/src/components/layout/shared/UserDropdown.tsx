@@ -4,7 +4,6 @@ import { useRef, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import ClickAwayListener from '@mui/material/ClickAwayListener';
@@ -17,6 +16,7 @@ import Popper from '@mui/material/Popper';
 import Typography from '@mui/material/Typography';
 
 import { useAuth } from '@/components/auth/AuthGuard';
+import AccountAvatar from '@/components/AccountAvatar';
 
 const UserDropdown = () => {
   const [open, setOpen] = useState(false);
@@ -74,9 +74,10 @@ const UserDropdown = () => {
           '&:focus-visible': { outline: '2px solid var(--mui-palette-primary-main)', outlineOffset: 2 },
         }}
       >
-        <Avatar sx={{ width: 40, height: 40, bgcolor: 'primary.lighterOpacity', color: 'primary.main' }}>
-          <i aria-hidden='true' className='ri-user-line' />
-        </Avatar>
+        <AccountAvatar
+          user={user}
+          sx={{ width: 40, height: 40, bgcolor: 'primary.lighterOpacity', color: 'primary.main' }}
+        />
         <Typography
           sx={{ display: { xs: 'none', md: 'block' }, fontWeight: 600, color: 'text.primary', fontSize: '0.875rem' }}
         >
@@ -111,10 +112,19 @@ const UserDropdown = () => {
               >
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, p: 5 }}>
-                    <Avatar sx={{ width: 48, height: 48, bgcolor: 'primary.lighterOpacity', color: 'primary.main' }}>
-                      <i aria-hidden='true' className='ri-user-line' />
-                    </Avatar>
-                    <Typography sx={{ fontWeight: 600, color: 'text.primary' }}>{user?.name || user?.email}</Typography>
+                    <AccountAvatar
+                      user={user}
+                      sx={{
+                        width: 48,
+                        height: 48,
+                        bgcolor: 'primary.lighterOpacity',
+                        color: 'primary.main',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography sx={{ fontWeight: 600, color: 'text.primary', overflowWrap: 'anywhere', minWidth: 0 }}>
+                      {user?.name || user?.email}
+                    </Typography>
                   </Box>
                   <Divider sx={{ mx: 4 }} />
                   <MenuList
@@ -129,6 +139,17 @@ const UserDropdown = () => {
                     }}
                     sx={{ p: 3 }}
                   >
+                    <MenuItem
+                      onClick={() => {
+                        closeMenu();
+                        router.push('/dashboard/account-settings');
+                      }}
+                      sx={{ gap: 3, minHeight: 48, borderRadius: 2, whiteSpace: 'normal' }}
+                    >
+                      <i aria-hidden='true' className='ri-settings-3-line' />
+                      <Typography sx={{ fontSize: '0.875rem' }}>Configuración de cuenta</Typography>
+                    </MenuItem>
+                    <Divider />
                     <MenuItem
                       onClick={handleLogout}
                       disabled={isLoggingOut}

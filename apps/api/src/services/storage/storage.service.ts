@@ -27,6 +27,10 @@ export class StorageService {
     @Inject(STORAGE_CONFIG) private readonly config: StorageConfig,
   ) {}
 
+  getImagePolicy() {
+    return { maxSize: this.config.maxImageSize, mimeTypes: Object.keys(formats) };
+  }
+
   async uploadImage(input: UploadImage): Promise<StoredImage> {
     if (!input || !Buffer.isBuffer(input.buffer) || !input.buffer.length)
       throw new BadRequestException('La imagen es obligatoria');
@@ -71,9 +75,26 @@ export class StorageService {
     await this.provider.delete(key);
   }
 
-  async replace(previousKey: string, input: UploadImage): Promise<ReplacedImage> {
-    this.assertKey(previousKey);
+  async replace(
+    previousKey: string | null,
+    input: UploadImage,
+    persist?: (image: StoredImage) => Promise<void>,
+  ): Promise<ReplacedImage> {
+    if (previousKey !== null) this.assertKey(previousKey);
     const image = await this.uploadImage(input);
+    if (persist) {
+      try {
+        await persist(image);
+      } catch (error) {
+        try {
+          await this.delete(image.key);
+        } catch {
+          this.logger.warn({ operation: 'persist-cleanup', provider: 'neon', key: image.key });
+        }
+        throw error;
+      }
+    }
+    if (previousKey === null) return { ...image, cleanupPending: false };
     try {
       await this.delete(previousKey);
       return { ...image, cleanupPending: false };

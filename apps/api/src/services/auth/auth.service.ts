@@ -11,6 +11,8 @@ import { SessionsService } from '../sessions/sessions.service';
 import { Request } from 'express';
 import { UAParser } from 'ua-parser-js';
 import { randomUUID } from 'crypto';
+import { StorageService } from '../storage/storage.service';
+import { avatarUrl } from '../users/avatar.util';
 
 @Injectable()
 export class AuthService {
@@ -18,6 +20,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly userService: UsersService,
     private readonly sessionService: SessionsService,
+    private readonly storage: StorageService,
   ) {}
 
   async register(dto: RegisterPatientDto) {
@@ -116,7 +119,11 @@ export class AuthService {
     const user = await this.userService.getOneById(idUser);
     if (!user?.isActive) throw new UnauthorizedException('Sesión no válida');
 
-    return this.buildSessionPayload(user, idSession);
+    return {
+      ...this.buildSessionPayload(user, idSession),
+      lastname: user.lastname,
+      avatarUrl: avatarUrl(this.storage, user.avatar),
+    };
   }
 
   async refreshToken(token: string) {

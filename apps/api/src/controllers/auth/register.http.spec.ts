@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { AuthController } from './auth.controller';
 import { UsersController } from '../users/users.controller';
 import { AuthService } from 'src/services/auth/auth.service';
+import { StorageService } from 'src/services/storage/storage.service';
 import { UsersService } from 'src/services/users/users.service';
 import { RolesService } from 'src/services/roles/roles.service';
 import { SessionsService } from 'src/services/sessions/sessions.service';
@@ -148,6 +149,7 @@ describe('Patient registration over HTTP (HU-USR-02 and HU-USR-03)', () => {
       controllers: [AuthController, UsersController],
       providers: [
         AuthService,
+        { provide: StorageService, useValue: {} },
         UsersService,
         SessionsService,
         JwtService,

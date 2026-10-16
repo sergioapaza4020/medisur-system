@@ -105,7 +105,14 @@ export function SpecialistsSection({ state }: { state: CatalogState<PublicDoctor
             >
               {state.items.map((doctor) => (
                 <Stack key={doctor.idDoctor} alignItems='center' gap={3} sx={{ minWidth: 0, textAlign: 'center' }}>
-                  <CustomAvatar color='primary' skin='light' size={80} aria-hidden='true'>
+                  <CustomAvatar
+                    color='primary'
+                    skin='light'
+                    size={80}
+                    src={doctor.avatarUrl ?? undefined}
+                    alt={`Foto de ${doctor.name} ${doctor.lastname}`}
+                    sx={{ '& img': { objectFit: 'cover' } }}
+                  >
                     {doctor.name.trim().charAt(0)}
                     {doctor.lastname.trim().charAt(0)}
                   </CustomAvatar>

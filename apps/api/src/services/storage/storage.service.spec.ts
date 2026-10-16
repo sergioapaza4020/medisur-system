@@ -153,4 +153,46 @@ describe('Reusable image storage', () => {
       ],
     ]);
   });
+
+  it('exposes only configured upload policy without credentials', () => {
+    expect(service.getImagePolicy()).toEqual({
+      maxSize: buffer.length,
+      mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    });
+  });
+
+  it('persists before deleting the old image and supports a first upload', async () => {
+    const persist = jest.fn().mockResolvedValue(undefined);
+    await service.replace(previousKey, input(), persist);
+    expect(provider.upload.mock.invocationCallOrder[0]).toBeLessThan(
+      persist.mock.invocationCallOrder[0],
+    );
+    expect(persist.mock.invocationCallOrder[0]).toBeLessThan(
+      provider.delete.mock.invocationCallOrder[0],
+    );
+    provider.delete.mockClear();
+    await service.replace(null, input(), persist);
+    expect(provider.delete).not.toHaveBeenCalled();
+  });
+
+  it('cleans a new upload after failed persistence without deleting the previous image', async () => {
+    const persist = jest.fn().mockRejectedValue(new Error('database failure'));
+    await expect(service.replace(previousKey, input(), persist)).rejects.toThrow(
+      'database failure',
+    );
+    expect(provider.delete).toHaveBeenCalledTimes(1);
+    expect(provider.delete).not.toHaveBeenCalledWith(previousKey);
+  });
+
+  it('preserves the persistence error and logs the new key if compensation fails', async () => {
+    provider.delete.mockRejectedValue(new Error('provider secret'));
+    await expect(
+      service.replace(null, input(), () => Promise.reject(new Error('database failure'))),
+    ).rejects.toThrow('database failure');
+    expect(warn).toHaveBeenCalledWith({
+      operation: 'persist-cleanup',
+      provider: 'neon',
+      key: expect.stringMatching(/^images\//) as unknown,
+    });
+  });
 });

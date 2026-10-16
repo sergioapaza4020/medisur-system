@@ -143,7 +143,23 @@ export class SessionsService {
     return this.sessionRepository.save(session);
   }
 
-  async revokeAllSessions(idUser: number, revokedBy?: User): Promise<void> {
+  async revokeAllSessions(
+    idUser: number,
+    revokedBy?: User,
+    manager?: EntityManager,
+  ): Promise<void> {
+    if (manager) {
+      await manager.getRepository(UserSession).update(
+        { user: { idUser }, isActive: true },
+        {
+          isActive: false,
+          revokedAt: new Date(),
+          revokedReason: SessionRevokeReasons.LOGOUT_ALL,
+          ...(revokedBy ? { revokedBy: { idUser: revokedBy.idUser } } : {}),
+        },
+      );
+      return;
+    }
     const sessions = await this.sessionRepository.find({
       where: {
         user: { idUser },

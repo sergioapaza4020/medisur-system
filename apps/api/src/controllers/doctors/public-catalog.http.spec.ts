@@ -70,6 +70,28 @@ describe('Anonymous landing catalogs', () => {
     },
   );
 
+  it('includes nullable public avatar URLs anonymously without adding user details', async () => {
+    const records = [
+      {
+        idDoctor: 1,
+        name: 'Ana',
+        lastname: 'Perez',
+        specialties: [],
+        avatarUrl: 'https://public.example.test/one.png',
+      },
+      { idDoctor: 2, name: 'Luis', lastname: 'Lopez', specialties: [], avatarUrl: null },
+    ];
+    doctors.getPublicPage.mockResolvedValueOnce({
+      data: records,
+      meta: { page: 1, limit: 6, total: 2, totalPages: 1 },
+    });
+    const response = await request(server).get('/doctors/public?page=1&limit=6').expect(200);
+    expect((response.body as { data: unknown }).data).toEqual(records);
+    expect(JSON.stringify(response.body)).not.toMatch(
+      /email|password|roles|permissions|idUser|"ci"/,
+    );
+  });
+
   it.each(['doctors', 'specialties'])(
     'validates pagination and keeps /%s private',
     async (domain) => {

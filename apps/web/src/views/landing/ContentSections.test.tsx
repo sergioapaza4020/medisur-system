@@ -13,6 +13,48 @@ vi.mock('@/services/doctors/doctorsService', () => ({ doctorsService: { publicPa
 vi.mock('@/services/specialties/specialtiesService', () => ({ specialtiesService: { publicPage: vi.fn() } }));
 
 describe('Landing phase 2 content', () => {
+  it.each([null, undefined])('keeps initials when avatarUrl is %s', (avatarUrl) => {
+    const html = renderToStaticMarkup(
+      <SpecialistsSection
+        state={{
+          status: 'ready',
+          items: [{ idDoctor: 1, name: 'Ana', lastname: 'Perez', specialties: [], avatarUrl }],
+        }}
+      />,
+    );
+    expect(html).toContain('AP');
+    expect(html).not.toContain('<img');
+  });
+
+  it('renders each API avatar URL with its matching doctor and uses the new URL after replacement', () => {
+    const doctors = [
+      {
+        idDoctor: 1,
+        name: 'Ana',
+        lastname: 'Perez',
+        specialties: [],
+        avatarUrl: 'https://public.example.test/first.png',
+      },
+      {
+        idDoctor: 2,
+        name: 'Luis',
+        lastname: 'Lopez',
+        specialties: [],
+        avatarUrl: 'https://public.example.test/second.png',
+      },
+    ];
+    const render = () => renderToStaticMarkup(<SpecialistsSection state={{ status: 'ready', items: doctors }} />);
+    const html = render();
+    expect(html).toContain('src="https://public.example.test/first.png"');
+    expect(html).toContain('alt="Foto de Ana Perez"');
+    expect(html).toContain('src="https://public.example.test/second.png"');
+    expect(html).toContain('alt="Foto de Luis Lopez"');
+    doctors[0].avatarUrl = 'https://public.example.test/replaced.webp';
+    const updated = render();
+    expect(updated).toContain('src="https://public.example.test/replaced.webp"');
+    expect(updated).not.toContain('first.png');
+    expect(updated).toContain('second.png');
+  });
   it('renders public specialties and names only, without administrative fields', () => {
     const html = renderToStaticMarkup(
       <SpecialtiesSection state={{ status: 'ready', items: [{ idSpecialty: 1, name: 'Cardiología' }] }} />,
@@ -84,10 +126,20 @@ describe('Landing phase 2 content', () => {
       status: true,
       statusCode: 200,
       meta: { page: 1, limit: 6, total: 1, totalPages: 1 },
-      data: [{ idDoctor: 2, name: 'Ana', lastname: 'Pérez', specialties: [] }],
+      data: [
+        {
+          idDoctor: 2,
+          name: 'Ana',
+          lastname: 'Pérez',
+          specialties: [],
+          avatarUrl: 'https://public.example.test/from-api.png',
+        },
+      ],
     });
     expect(renderToStaticMarkup(await SpecialtiesDataSection())).toContain('Cardiología');
-    expect(renderToStaticMarkup(await SpecialistsDataSection())).toContain('Ana Pérez');
+    const specialists = renderToStaticMarkup(await SpecialistsDataSection());
+    expect(specialists).toContain('Ana Pérez');
+    expect(specialists).toContain('src="https://public.example.test/from-api.png"');
     expect(specialtiesService.publicPage).toHaveBeenCalledWith({ page: 1, limit: 8 });
     expect(doctorsService.publicPage).toHaveBeenCalledWith({ page: 1, limit: 6 });
   });

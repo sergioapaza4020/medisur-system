@@ -31,10 +31,10 @@ export function getRegistrationPasswordFeedback(password: string) {
   return { requirements, valid, strength, progress };
 }
 
-export function validatePatientRegistration(
-  form: PatientRegistration,
-): Partial<Record<keyof PatientRegistration, string>> {
-  const errors: Partial<Record<keyof PatientRegistration, string>> = {};
+export function validatePersonalData(
+  form: Pick<PatientRegistration, 'name' | 'lastname' | 'email' | 'ci'>,
+): Partial<Record<'name' | 'lastname' | 'email' | 'ci', string>> {
+  const errors: Partial<Record<'name' | 'lastname' | 'email' | 'ci', string>> = {};
   for (const field of ['name', 'lastname'] as const) {
     if (!/^[\p{L}\p{M}]+(?:[ '\u2019-][\p{L}\p{M}]+)*$/u.test(form[field].trim()) || form[field].trim().length > 100)
       errors[field] = `Ingresa ${field === 'name' ? 'nombres' : 'apellidos'} válidos (máximo 100 caracteres)`;
@@ -43,6 +43,13 @@ export function validatePatientRegistration(
     errors.email = 'Ingresa un correo electrónico válido';
   if (!/^[A-Za-z0-9][A-Za-z0-9 .-]{2,29}$/.test(form.ci.trim()))
     errors.ci = 'Ingresa un documento válido de entre 3 y 30 caracteres';
+  return errors;
+}
+
+export function validatePatientRegistration(
+  form: PatientRegistration,
+): Partial<Record<keyof PatientRegistration, string>> {
+  const errors: Partial<Record<keyof PatientRegistration, string>> = validatePersonalData(form);
   const passwordFeedback = getRegistrationPasswordFeedback(form.password);
   if (!passwordFeedback.valid)
     errors.password = passwordFeedback.requirements[4].met
