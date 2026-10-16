@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/co
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserSession } from 'src/entities/user-sessions/user-sessions.entity';
 import { User } from 'src/entities/users/users.entity';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { SessionRevokeReasons } from '@common/enums/sessionRevokeReasons';
 
@@ -161,6 +161,18 @@ export class SessionsService {
 
       await this.sessionRepository.save(session);
     }
+  }
+
+  async revokeForPasswordChange(idUser: number, manager: EntityManager): Promise<void> {
+    await manager.getRepository(UserSession).update(
+      { user: { idUser }, isActive: true },
+      {
+        isActive: false,
+        revokedAt: new Date(),
+        revokedReason: SessionRevokeReasons.PASSWORD_CHANGED,
+        revokedBy: { idUser },
+      },
+    );
   }
 
   async logout(refreshToken: string, revokedBy?: User) {

@@ -17,6 +17,8 @@ import {
 import { PasswordRecoveryService } from 'src/services/auth/password-recovery.service';
 import { PasswordRecoveryRateLimiter } from 'src/services/auth/password-recovery-rate-limiter';
 import { PasswordRecoveryController } from 'src/controllers/auth/password-recovery.controller';
+import { PasswordResetController } from 'src/controllers/auth/password-reset.controller';
+import { PasswordResetService } from 'src/services/auth/password-reset.service';
 
 @Module({
   imports: [
@@ -35,8 +37,14 @@ import { PasswordRecoveryController } from 'src/controllers/auth/password-recove
     MailModule,
     TypeOrmModule.forFeature([User, PasswordRecoveryToken, PasswordRecoveryRateLimit]),
   ],
-  providers: [AuthService, JwtStrategy, PasswordRecoveryService, PasswordRecoveryRateLimiter],
-  controllers: [AuthController, PasswordRecoveryController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    PasswordRecoveryService,
+    PasswordRecoveryRateLimiter,
+    PasswordResetService,
+  ],
+  controllers: [AuthController, PasswordRecoveryController, PasswordResetController],
   exports: [AuthService],
 })
 export class AuthModule {}

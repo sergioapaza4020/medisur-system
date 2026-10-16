@@ -25,7 +25,7 @@ Para cuentas activas, se generan 32 bytes criptográficamente aleatorios y se co
 
 Se reutilizan `MailService`, su plantilla `password-reset` y el adaptador Gmail SMTP actual. No se registran destinatarios ni tokens en los nuevos logs. Si el token no puede persistirse, no se envía. Ante un resultado de envío rechazado o una excepción, se elimina ese registro; si esa limpieza también falla, el registro sigue sujeto a su expiración. Los enlaces previos no se invalidan al solicitar otro, para evitar que un tercero invalide enlaces legítimos.
 
-Esta HU no modifica contraseñas ni sesiones. La pantalla `/reset-password`, la comprobación de expiración al consumir el token, su uso único, el cambio de contraseña y la política de invalidación de sesiones pertenecen a **HU-AUTH-02**. El enlace emitido establece el contrato para esa implementación; todavía no completa la recuperación de extremo a extremo.
+La solicitud no modifica contraseñas ni sesiones. La pantalla `/reset-password`, la comprobación de expiración al consumir el token, su uso único, el cambio de contraseña y la invalidación de sesiones se implementan en [HU-AUTH-02](hu-auth-02-password-reset.md). El enlace emitido por esta HU utiliza ese contrato.
 
 ## Protección frente a abuso y enumeración
 

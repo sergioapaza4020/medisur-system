@@ -22,7 +22,10 @@ export class MailService {
     }
     let result: MailResult;
     try {
-      result = await this.transport.send({ to: input.to, ...renderMail(input) }, idempotencyKey);
+      result = await this.transport.send(
+        { to: input.to, ...renderMail(input, this.config.get<string>('MEDISUR_EMAIL_LOGO_URL')) },
+        idempotencyKey,
+      );
     } catch {
       result = { accepted: false, reason: 'provider-error' };
     }
