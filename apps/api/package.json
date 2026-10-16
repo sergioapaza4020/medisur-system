@@ -25,6 +25,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed": "ts-node -r tsconfig-paths/register ./src/database/seed.ts",
     "mail:test": "ts-node -r tsconfig-paths/register ./src/mail-test.ts",
+    "storage:test": "ts-node -r tsconfig-paths/register ./src/storage-test.ts",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/datasource.ts",
     "migration:create": "typeorm-ts-node-commonjs migration:create",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/datasource.ts",
@@ -32,6 +33,7 @@
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/datasource.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1152.0",
     "@nestjs/bullmq": "10.2.3",
     "@nestjs/common": "10.4.19",
     "@nestjs/config": "3.3.0",
