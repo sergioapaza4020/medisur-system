@@ -1,6 +1,11 @@
 'use client';
 
+import { useRef, useState } from 'react';
+import type { FormEvent } from 'react';
+
 import Link from 'next/link';
+
+import Alert from '@mui/material/Alert';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -12,6 +17,9 @@ import InputAdornment from '@mui/material/InputAdornment';
 
 import Button from '@mui/material/Button';
 
+import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
+import { authService } from '@/services/auth/authService';
+
 import type { Mode } from '@core/types';
 import Logo from '@components/layout/shared/Logo';
 
@@ -21,6 +29,32 @@ import DirectionalIcon from '@components/DirectionalIcon';
 import ModeDropdown from '@/components/layout/shared/ModeDropdown';
 
 const ForgotPassword = ({ mode }: { mode: Mode }) => {
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (inFlight.current) return;
+    setSuccess(null);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || email.trim().length > 254) {
+      setError('Ingresa un correo electrónico válido');
+      return;
+    }
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      setSuccess(await authService.requestPasswordRecovery(email));
+    } catch (error) {
+      setError(getApiErrorMessage(error));
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
   return (
     <Box
       component='main'
@@ -127,7 +161,8 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
             <Box
               component={Form}
               noValidate
-
+              onSubmit={handleSubmit}
+              aria-busy={busy}
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -136,6 +171,12 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
                 '& .MuiInputLabel-root:not(.Mui-focused):not(.Mui-error)': { color: 'text.secondary' },
               }}
             >
+              {error && <Alert severity='error'>{error}</Alert>}
+              {success && (
+                <Alert severity='success' role='status'>
+                  {success}
+                </Alert>
+              )}
               <TextField
                 autoFocus
                 fullWidth
@@ -145,6 +186,11 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
                 autoComplete='email'
                 label='Correo electrónico'
                 placeholder='tu@correo.com'
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                disabled={busy}
+                inputProps={{ maxLength: 254 }}
                 InputLabelProps={{ shrink: true }}
                 InputProps={{
                   startAdornment: (
@@ -159,10 +205,10 @@ const ForgotPassword = ({ mode }: { mode: Mode }) => {
                 variant='contained'
                 type='submit'
                 disableElevation
-
+                disabled={busy}
                 sx={{ minHeight: 52, borderRadius: 2.5, fontSize: '1rem' }}
               >
-                Enviar enlace para reiniciar
+                {busy ? 'Enviando…' : 'Enviar enlace para reiniciar'}
               </Button>
               <Typography
                 component={Link}

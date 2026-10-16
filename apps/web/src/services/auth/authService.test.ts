@@ -54,6 +54,21 @@ beforeEach(() => {
 });
 
 describe('MEDISUR authentication using the existing HTTP client', () => {
+  it('requests recovery through the central client without creating a session or sending privileged fields', async () => {
+    apiClient.defaults.adapter = (config) => {
+      calls.push(config);
+      return Promise.resolve({
+        ...success(config, null),
+        data: { status: true, statusCode: 200, data: null, message: 'Respuesta genérica' },
+      });
+    };
+    expect(await authService.requestPasswordRecovery(' ANA@example.com ')).toBe('Respuesta genérica');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('/auth/forgot-password');
+    expect(JSON.parse(calls[0].data as string)).toEqual({ email: 'ana@example.com' });
+    expect(calls[0].withCredentials).toBe(true);
+    expect(cookies.size).toBe(0);
+  });
   it('registers through the existing client with an explicit field allowlist and no session or privileged state', async () => {
     apiClient.defaults.adapter = (config) => {
       calls.push(config);
