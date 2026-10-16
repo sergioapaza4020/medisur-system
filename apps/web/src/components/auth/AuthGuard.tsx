@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { usePathname, useRouter } from 'next/navigation';
@@ -19,6 +19,7 @@ const AuthContext = createContext<{
   user: AuthUser | null;
   hasPermission: (permission: string) => boolean;
   logout: () => Promise<void>;
+  updateProfile: (profile: Partial<Pick<AuthUser, 'name' | 'email' | 'lastname' | 'avatarUrl'>>) => void;
 } | null>(null);
 
 export function useAuth() {
@@ -34,26 +35,27 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [session, setSession] = useState<{ user: AuthUser | null; error: string | null }>({ user: null, error: null });
   const [attempt, setAttempt] = useState(0);
+  const requestVersion = useRef(0);
 
   useEffect(() => {
     let active = true;
-    let requestVersion = 0;
 
     const onCleared = () => {
       if (!active) return;
-      requestVersion += 1;
+      requestVersion.current += 1;
       setSession({ user: null, error: null });
       router.replace('/login');
     };
 
     const loadUser = () => {
-      const version = ++requestVersion;
+      const version = ++requestVersion.current;
       authService.getCurrentUser().then(
         (user) => {
-          if (active && version === requestVersion) setSession({ user, error: null });
+          if (active && version === requestVersion.current) setSession({ user, error: null });
         },
         (error: unknown) => {
-          if (active && version === requestVersion) setSession({ user: null, error: getApiErrorMessage(error) });
+          if (active && version === requestVersion.current)
+            setSession({ user: null, error: getApiErrorMessage(error) });
         },
       );
     };
@@ -96,6 +98,23 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
         user: session.user,
         hasPermission: (permission) => session.user?.permissions.includes(permission) ?? false,
         logout: () => authService.logout(),
+        updateProfile: ({ name, email, lastname, avatarUrl }) => {
+          requestVersion.current += 1;
+          setSession((current) =>
+            current.user
+              ? {
+                  ...current,
+                  user: {
+                    ...current.user,
+                    ...(name !== undefined ? { name } : {}),
+                    ...(email !== undefined ? { email } : {}),
+                    ...(lastname !== undefined ? { lastname } : {}),
+                    ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+                  },
+                }
+              : current,
+          );
+        },
       }}
     >
       {children}

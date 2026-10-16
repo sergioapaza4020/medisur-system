@@ -9,6 +9,8 @@ export interface AuthUser {
   idUser: number;
   idSession: number;
   name: string;
+  lastname?: string;
+  avatarUrl?: string | null;
   email: string;
   roles: string[];
   permissions: string[];

@@ -19,6 +19,7 @@ import { PasswordRecoveryRateLimiter } from 'src/services/auth/password-recovery
 import { PasswordRecoveryController } from 'src/controllers/auth/password-recovery.controller';
 import { PasswordResetController } from 'src/controllers/auth/password-reset.controller';
 import { PasswordResetService } from 'src/services/auth/password-reset.service';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { PasswordResetService } from 'src/services/auth/password-reset.service';
     PassportModule,
     ConfigModule,
     UsersModule,
+    StorageModule,
     SessionsModule,
     MailModule,
     TypeOrmModule.forFeature([User, PasswordRecoveryToken, PasswordRecoveryRateLimit]),

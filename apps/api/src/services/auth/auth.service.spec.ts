@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
+import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { SessionsService } from '../sessions/sessions.service';
@@ -20,6 +21,7 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        { provide: StorageService, useValue: {} },
         {
           provide: UsersService,
           useValue: { ...mockUsersService, getForAuthentication, getOneById },

@@ -10,6 +10,7 @@ import { AuthController } from './auth.controller';
 import { SessionsController } from '../sessions/sessions.controller';
 import { RolesController } from '../roles/roles.controller';
 import { AuthService } from 'src/services/auth/auth.service';
+import { StorageService } from 'src/services/storage/storage.service';
 import { SessionsService } from 'src/services/sessions/sessions.service';
 import { UsersService } from 'src/services/users/users.service';
 import { RolesService } from 'src/services/roles/roles.service';
@@ -85,6 +86,7 @@ describe('HU-USR-01 authentication over HTTP', () => {
       controllers: [AuthController, SessionsController, RolesController],
       providers: [
         AuthService,
+        { provide: StorageService, useValue: {} },
         SessionsService,
         JwtService,
         JwtStrategy,

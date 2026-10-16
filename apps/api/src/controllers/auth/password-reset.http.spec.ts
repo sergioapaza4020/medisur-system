@@ -12,6 +12,7 @@ import { User } from 'src/entities/users/users.entity';
 import { UserSession } from 'src/entities/user-sessions/user-sessions.entity';
 import { PasswordRecoveryToken } from 'src/entities/auth/password-recovery.entity';
 import { AuthService } from 'src/services/auth/auth.service';
+import { StorageService } from 'src/services/storage/storage.service';
 import { UsersService } from 'src/services/users/users.service';
 import { SessionsService } from 'src/services/sessions/sessions.service';
 import { PasswordResetService } from 'src/services/auth/password-reset.service';
@@ -169,6 +170,7 @@ describe('HU-AUTH-02 password reset over HTTP', () => {
       providers: [
         PasswordResetService,
         AuthService,
+        { provide: StorageService, useValue: {} },
         SessionsService,
         JwtService,
         JwtStrategy,

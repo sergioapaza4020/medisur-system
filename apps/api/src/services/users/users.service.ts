@@ -241,23 +241,24 @@ export class UsersService {
     return this.userRepository.save(user);
   }
 
-  async update(idUser: number, dto: UserUpdateDto, authorId: number) {
+  async update(idUser: number, dto: UserUpdateDto, authorId: number, manager?: EntityManager) {
+    const repository = manager?.getRepository(User) ?? this.userRepository;
     if (dto.email !== undefined) dto = { ...dto, email: normalizeEmail(dto.email) };
-    const user = await this.userRepository.findOne({ where: { idUser }, relations: ['roles'] });
+    const user = await repository.findOne({ where: { idUser }, relations: ['roles'] });
     if (!user) throw new BadRequestException('User not found');
     this.assertHasRoles(user.roles);
     for (const field of ['email', 'ci'] as const) {
       if (dto[field] !== undefined) {
-        const duplicate = await this.userRepository.findOne({ where: { [field]: dto[field] } });
+        const duplicate = await repository.findOne({ where: { [field]: dto[field] } });
         if (duplicate && duplicate.idUser !== idUser)
           throw new BadRequestException(`${field} already exists`);
       }
     }
     // Explicit fields keep role assignment behind its own permission.
     const { email, name, lastname, ci } = dto;
-    this.userRepository.merge(user, { email, name, lastname, ci });
+    repository.merge(user, { email, name, lastname, ci });
     user.updatedBy = authorId;
-    const saved = await this.userRepository.save(user);
+    const saved = await repository.save(user);
     return {
       idUser: saved.idUser,
       email: saved.email,

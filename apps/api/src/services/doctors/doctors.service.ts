@@ -24,6 +24,8 @@ import {
   SpecialtySelection,
 } from 'src/common/types/doctor-selection.type';
 import { SpecialtiesQueryDto } from 'src/dtos/specialties/specialties.dto';
+import { StorageService } from '../storage/storage.service';
+import { avatarUrl } from '../users/avatar.util';
 
 @Injectable()
 export class DoctorsService {
@@ -33,6 +35,7 @@ export class DoctorsService {
     private readonly usersService: UsersService,
     private readonly rolesService: RolesService,
     private readonly specialtiesService: SpecialtiesService,
+    private readonly storage: StorageService,
   ) {}
 
   private project(doctor: Doctor, activeSpecialtiesOnly = false) {
@@ -59,7 +62,7 @@ export class DoctorsService {
 
   async getPublicPage(query: PaginationQueryDto): Promise<PaginatedResult<PublicDoctor>> {
     // Reuse operational eligibility (active profile, account and DOCTOR role), never the admin projection.
-    const result = await this.getAll(
+    const result = await this.getPage(
       Object.assign(new DoctorsQueryDto(), {
         page: query.page,
         limit: query.limit,
@@ -72,7 +75,8 @@ export class DoctorsService {
         idDoctor,
         name: user.name,
         lastname: user.lastname,
-        specialties: specialties
+        avatarUrl: avatarUrl(this.storage, user.avatar),
+        specialties: (specialties ?? [])
           .filter(({ isActive }) => isActive)
           .map(({ idSpecialty, name }) => ({ idSpecialty, name })),
       })),
@@ -143,6 +147,16 @@ export class DoctorsService {
   }
 
   async getAll(query = new DoctorsQueryDto()) {
+    const result = await this.getPage(query);
+    return {
+      ...result,
+      data: result.data.map((doctor) =>
+        this.project(doctor, !query.status || query.status === RecordStatus.ACTIVE),
+      ),
+    };
+  }
+
+  private async getPage(query: DoctorsQueryDto) {
     const qb = this.repository
       .createQueryBuilder('doctor')
       .innerJoinAndSelect('doctor.user', 'user')
@@ -167,13 +181,7 @@ export class DoctorsService {
             '%' + query.search.trim().replace(/[\\%_]/g, (character) => '\\' + character) + '%',
         },
       );
-    const result = await paginate(qb, query);
-    return {
-      ...result,
-      data: result.data.map((doctor) =>
-        this.project(doctor, !query.status || query.status === RecordStatus.ACTIVE),
-      ),
-    };
+    return paginate(qb, query);
   }
 
   async getActiveById(idDoctor: number) {

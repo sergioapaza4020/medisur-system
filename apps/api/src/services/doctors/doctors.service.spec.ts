@@ -11,6 +11,7 @@ import { SpecialtiesService } from '../specialties/specialties.service';
 import { DoctorsService } from './doctors.service';
 import { DoctorsQueryDto } from 'src/dtos/doctors/doctors.dto';
 import { RecordStatus } from 'src/dtos/common/status-query.dto';
+import { StorageService } from '../storage/storage.service';
 
 describe('Doctor registration integrity', () => {
   const qb = {
@@ -68,6 +69,7 @@ describe('Doctor registration integrity', () => {
     usersService,
     rolesService,
     specialtiesService,
+    {} as StorageService,
   );
   const doctorRole = { idRole: 3, name: 'DOCTOR', isActive: true } as Role;
   let user: User;

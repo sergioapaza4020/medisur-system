@@ -1,346 +1,180 @@
 'use client';
 
-// React Imports
-import { useState } from 'react';
-import type { ChangeEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 
-// MUI Imports
-import Grid from '@mui/material/GridLegacy';
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
-import Avatar from '@mui/material/Avatar';
-import CardHeader from '@mui/material/CardHeader';
+import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Button from '@mui/material/Button';
-import Typography from '@mui/material/Typography';
+import CardHeader from '@mui/material/CardHeader';
+import CircularProgress from '@mui/material/CircularProgress';
+import Grid from '@mui/material/GridLegacy';
 import TextField from '@mui/material/TextField';
-import FormControl from '@mui/material/FormControl';
-import InputLabel from '@mui/material/InputLabel';
-import Select from '@mui/material/Select';
-import MenuItem from '@mui/material/MenuItem';
-import Chip from '@mui/material/Chip';
-import type { SelectChangeEvent } from '@mui/material/Select';
 
-type Data = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  organization: string;
-  phoneNumber: number | string;
-  address: string;
-  state: string;
-  zipCode: string;
-  country: string;
-  language: string;
-  timezone: string;
-  currency: string;
-};
+import { myAccountService } from '@/services/users/myAccountService';
+import type { MyAccount, UserFields } from '@/types/users';
+import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
+import { validatePersonalData } from '@/utils/patientRegistration';
+import AccountPhoto from './AccountPhoto';
+import { useAuth } from '@/components/auth/AuthGuard';
 
-// Vars
-const initialData: Data = {
-  firstName: 'John',
-  lastName: 'Doe',
-  email: 'john.doe@example.com',
-  organization: 'ThemeSelection',
-  phoneNumber: '+1 (917) 543-9876',
-  address: '123 Main St, New York, NY 10001',
-  state: 'New York',
-  zipCode: '634880',
-  country: 'usa',
-  language: 'arabic',
-  timezone: 'gmt-12',
-  currency: 'usd',
-};
+const fields = { name: 'Nombre', lastname: 'Apellido', email: 'Correo electrónico', ci: 'Documento' } as const;
 
-const languageData = ['English', 'Arabic', 'French', 'German', 'Portuguese'];
+export default function AccountDetails() {
+  const [saved, setSaved] = useState<MyAccount | null>(null);
+  const { updateProfile } = useAuth();
+  const [form, setForm] = useState<UserFields | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Partial<Record<keyof UserFields, string>>>({});
+  const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const inFlight = useRef(false);
 
-const AccountDetails = () => {
-  // States
-  const [formData, setFormData] = useState<Data>(initialData);
-  const [fileInput, setFileInput] = useState<string>('');
-  const [imgSrc, setImgSrc] = useState<string>('/images/avatars/1.png');
-  const [language, setLanguage] = useState<string[]>(['English']);
+  useEffect(() => {
+    let active = true;
+    myAccountService.get().then(
+      (account) => {
+        if (active) {
+          setSaved(account);
+          setForm(account);
+        }
+      },
+      (failure: unknown) => {
+        if (active) setError(getApiErrorMessage(failure));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
 
-  const handleDelete = (value: string) => {
-    setLanguage((current) => current.filter((item) => item !== value));
-  };
-
-  const handleChange = (event: SelectChangeEvent<string[]>) => {
-    setLanguage(event.target.value as string[]);
-  };
-
-  const handleFormChange = (field: keyof Data, value: Data[keyof Data]) => {
-    setFormData({ ...formData, [field]: value });
-  };
-
-  const handleFileInputChange = (file: ChangeEvent) => {
-    const reader = new FileReader();
-    const { files } = file.target as HTMLInputElement;
-
-    if (files && files.length !== 0) {
-      reader.onload = () => setImgSrc(reader.result as string);
-      reader.readAsDataURL(files[0]);
-
-      if (reader.result !== null) {
-        setFileInput(reader.result as string);
-      }
+  const changes: Partial<UserFields> = {};
+  if (form && saved) {
+    for (const field of Object.keys(fields) as (keyof UserFields)[]) {
+      if (form[field] !== saved[field]) changes[field] = form[field];
     }
-  };
+  }
+  const dirty = Object.keys(changes).length > 0;
 
-  const handleFileInputReset = () => {
-    setFileInput('');
-    setImgSrc('/images/avatars/1.png');
-  };
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!form || !dirty || inFlight.current) return;
+    const validation = validatePersonalData(form);
+    setErrors(validation);
+    setSuccess(false);
+    setError(null);
+    if (Object.keys(validation).length) return;
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      const account = await myAccountService.update(changes);
+      setSaved((current) => (current ? { ...account, avatarUrl: current.avatarUrl } : account));
+      setForm(account);
+      setSuccess(true);
+      updateProfile({ name: account.name, lastname: account.lastname, email: account.email });
+    } catch (failure) {
+      setError(getApiErrorMessage(failure));
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
 
   return (
-    <Card
-      sx={{
-        border: 1,
-        borderColor: 'divider',
-        borderRadius: 3,
-        boxShadow: (theme) => theme.shadows[1],
-        '& .MuiCardContent-root': { p: { xs: 5, sm: 7 } },
-        '& .MuiOutlinedInput-root': {
-          minHeight: 56,
-          borderRadius: 2,
-          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
-        },
-        '& .MuiButton-root': { minHeight: 40, borderRadius: 2 },
-      }}
-    >
+    <Card>
       <CardHeader
         title='Información de la cuenta'
-        subheader='Gestiona tu información personal y tus preferencias en MEDISUR.'
-        titleTypographyProps={{ component: 'h1', variant: 'h5', fontWeight: 600 }}
-        sx={{ p: { xs: 5, sm: 7 }, pb: { xs: 0, sm: 0 }, '& .MuiCardHeader-subheader': { mt: 1 } }}
+        subheader='Gestiona tus datos personales en MEDISUR.'
+        titleTypographyProps={{ component: 'h1' }}
       />
-      <CardContent sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', sm: 'row' },
-            alignItems: { xs: 'flex-start', sm: 'center' },
-            gap: 5,
-          }}
-        >
-          <Avatar
-            src={imgSrc}
-            alt='Foto de perfil'
-            sx={{ width: 96, height: 96, border: 3, borderColor: 'primary.lightOpacity' }}
-          />
-          <div className='flex flex-grow flex-col gap-4'>
-            <div className='flex flex-col sm:flex-row gap-4'>
-              <Button component='label' size='small' variant='contained' htmlFor='account-settings-upload-image'>
-                Subir nueva foto
-                <input
-                  hidden
-                  type='file'
-                  value={fileInput}
-                  accept='image/png, image/jpeg'
-                  onChange={handleFileInputChange}
-                  id='account-settings-upload-image'
-                />
-              </Button>
-              <Button size='small' variant='outlined' color='secondary' onClick={handleFileInputReset}>
-                Restablecer
-              </Button>
-            </div>
-            <Typography variant='body2' color='text.secondary'>
-              Formatos JPG o PNG. Tamaño máximo recomendado: 800 KB.
-            </Typography>
-          </div>
-        </Box>
-      </CardContent>
       <CardContent>
-        <form onSubmit={(e) => e.preventDefault()}>
-          <Grid container spacing={5}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Nombre'
-                value={formData.firstName}
-                placeholder='John'
-                onChange={(e) => handleFormChange('firstName', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Apellido'
-                value={formData.lastName}
-                placeholder='Doe'
-                onChange={(e) => handleFormChange('lastName', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Correo electrónico'
-                value={formData.email}
-                placeholder='john.doe@gmail.com'
-                onChange={(e) => handleFormChange('email', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Organización'
-                value={formData.organization}
-                placeholder='ThemeSelection'
-                onChange={(e) => handleFormChange('organization', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Teléfono'
-                value={formData.phoneNumber}
-                placeholder='+1 (234) 567-8901'
-                onChange={(e) => handleFormChange('phoneNumber', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Dirección'
-                value={formData.address}
-                placeholder='Address'
-                onChange={(e) => handleFormChange('address', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Estado'
-                value={formData.state}
-                placeholder='New York'
-                onChange={(e) => handleFormChange('state', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                type='number'
-                label='Código postal'
-                value={formData.zipCode}
-                placeholder='123456'
-                onChange={(e) => handleFormChange('zipCode', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel id='account-country-label'>País</InputLabel>
-                <Select
-                  labelId='account-country-label'
-                  label='País'
-                  value={formData.country}
-                  onChange={(e) => handleFormChange('country', e.target.value)}
-                >
-                  <MenuItem value='usa'>USA</MenuItem>
-                  <MenuItem value='uk'>UK</MenuItem>
-                  <MenuItem value='australia'>Australia</MenuItem>
-                  <MenuItem value='germany'>Germany</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel id='account-language-label'>Idioma</InputLabel>
-                <Select
-                  multiple
-                  labelId='account-language-label'
-                  label='Idioma'
-                  value={language}
-                  onChange={handleChange}
-                  renderValue={(selected) => (
-                    <div className='flex flex-wrap gap-2'>
-                      {(selected as string[]).map((value) => (
-                        <Chip
-                          key={value}
-                          clickable
-                          deleteIcon={
-                            <i className='ri-close-circle-fill' onMouseDown={(event) => event.stopPropagation()} />
-                          }
-                          size='small'
-                          label={value}
-                          onDelete={() => handleDelete(value)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                >
-                  {languageData.map((name) => (
-                    <MenuItem key={name} value={name}>
-                      {name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel id='account-timezone-label'>Zona horaria</InputLabel>
-                <Select
-                  labelId='account-timezone-label'
-                  label='Zona horaria'
-                  value={formData.timezone}
-                  onChange={(e) => handleFormChange('timezone', e.target.value)}
-                  MenuProps={{ PaperProps: { style: { maxHeight: 250 } } }}
-                >
-                  <MenuItem value='gmt-12'>(GMT-12:00) International Date Line West</MenuItem>
-                  <MenuItem value='gmt-11'>(GMT-11:00) Midway Island, Samoa</MenuItem>
-                  <MenuItem value='gmt-10'>(GMT-10:00) Hawaii</MenuItem>
-                  <MenuItem value='gmt-09'>(GMT-09:00) Alaska</MenuItem>
-                  <MenuItem value='gmt-08'>(GMT-08:00) Pacific Time (US & Canada)</MenuItem>
-                  <MenuItem value='gmt-08-baja'>(GMT-08:00) Tijuana, Baja California</MenuItem>
-                  <MenuItem value='gmt-07'>(GMT-07:00) Chihuahua, La Paz, Mazatlan</MenuItem>
-                  <MenuItem value='gmt-07-mt'>(GMT-07:00) Mountain Time (US & Canada)</MenuItem>
-                  <MenuItem value='gmt-06'>(GMT-06:00) Central America</MenuItem>
-                  <MenuItem value='gmt-06-ct'>(GMT-06:00) Central Time (US & Canada)</MenuItem>
-                  <MenuItem value='gmt-06-mc'>(GMT-06:00) Guadalajara, Mexico City, Monterrey</MenuItem>
-                  <MenuItem value='gmt-06-sk'>(GMT-06:00) Saskatchewan</MenuItem>
-                  <MenuItem value='gmt-05'>(GMT-05:00) Bogota, Lima, Quito, Rio Branco</MenuItem>
-                  <MenuItem value='gmt-05-et'>(GMT-05:00) Eastern Time (US & Canada)</MenuItem>
-                  <MenuItem value='gmt-05-ind'>(GMT-05:00) Indiana (East)</MenuItem>
-                  <MenuItem value='gmt-04'>(GMT-04:00) Atlantic Time (Canada)</MenuItem>
-                  <MenuItem value='gmt-04-clp'>(GMT-04:00) Caracas, La Paz</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel id='account-currency-label'>Moneda</InputLabel>
-                <Select
-                  labelId='account-currency-label'
-                  label='Moneda'
-                  value={formData.currency}
-                  onChange={(e) => handleFormChange('currency', e.target.value)}
-                >
-                  <MenuItem value='usd'>USD</MenuItem>
-                  <MenuItem value='euro'>EUR</MenuItem>
-                  <MenuItem value='pound'>Pound</MenuItem>
-                  <MenuItem value='bitcoin'>Bitcoin</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid
-              item
-              xs={12}
-              className='flex gap-4 flex-wrap'
-              sx={{ mt: 1, '& .MuiButton-root': { flexGrow: { xs: 1, sm: 0 } } }}
+        {error && (
+          <Alert severity='error' sx={{ mb: 4 }}>
+            {error}
+          </Alert>
+        )}
+        {success && (
+          <Alert severity='success' sx={{ mb: 4 }}>
+            Datos actualizados correctamente
+          </Alert>
+        )}
+        {!form ? (
+          error ? (
+            <Button
+              onClick={() => {
+                setError(null);
+                setAttempt((value) => value + 1);
+              }}
             >
-              <Button variant='contained' type='submit'>
-                Guardar cambios
-              </Button>
-              <Button variant='outlined' type='reset' color='secondary' onClick={() => setFormData(initialData)}>
-                Restablecer
-              </Button>
-            </Grid>
-          </Grid>
-        </form>
+              Reintentar
+            </Button>
+          ) : (
+            <CircularProgress aria-label='Cargando cuenta' />
+          )
+        ) : (
+          <>
+            {saved && (
+              <AccountPhoto
+                account={saved}
+                onChange={(avatarUrl) => setSaved((current) => (current ? { ...current, avatarUrl } : current))}
+              />
+            )}
+            <Box component='form' noValidate onSubmit={submit} aria-busy={busy}>
+              <Grid container spacing={5}>
+                {(Object.keys(fields) as (keyof UserFields)[]).map((field) => (
+                  <Grid item xs={12} sm={6} key={field}>
+                    <TextField
+                      fullWidth
+                      required
+                      name={field}
+                      label={fields[field]}
+                      value={form[field]}
+                      type={field === 'email' ? 'email' : 'text'}
+                      disabled={busy}
+                      autoComplete={
+                        field === 'name'
+                          ? 'given-name'
+                          : field === 'lastname'
+                            ? 'family-name'
+                            : field === 'email'
+                              ? 'email'
+                              : 'off'
+                      }
+                      error={!!errors[field]}
+                      helperText={errors[field]}
+                      onChange={(event) => {
+                        setForm({ ...form, [field]: event.target.value });
+                        setSuccess(false);
+                      }}
+                    />
+                  </Grid>
+                ))}
+                <Grid item xs={12}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                    <Button type='submit' variant='contained' disabled={busy || !dirty}>
+                      {busy ? 'Guardando…' : 'Guardar cambios'}
+                    </Button>
+                    <Button
+                      disabled={busy || !dirty}
+                      onClick={() => {
+                        setForm(saved);
+                        setErrors({});
+                        setError(null);
+                        setSuccess(false);
+                      }}
+                    >
+                      Restablecer
+                    </Button>
+                  </Box>
+                </Grid>
+              </Grid>
+            </Box>
+          </>
+        )}
       </CardContent>
     </Card>
   );
-};
-
-export default AccountDetails;
+}
