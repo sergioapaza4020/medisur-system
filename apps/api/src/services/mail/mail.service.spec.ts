@@ -20,6 +20,7 @@ describe('Transactional mail', () => {
     config = new ConfigService({ FRONTEND_URL: 'https://medisur.example', NODE_ENV: 'production' });
     config.set('FRONTEND_URL', 'https://medisur.example');
     config.set('NODE_ENV', 'production');
+    config.set('MEDISUR_EMAIL_LOGO_URL', '');
     service = new MailService({ send }, config);
     warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   });
@@ -62,12 +63,50 @@ describe('Transactional mail', () => {
       expect.objectContaining({
         to: input.to,
         subject: expect.stringContaining('MEDISUR') as unknown,
-        html: expect.stringContaining('<h1>MEDISUR</h1>') as unknown,
+        html: expect.stringContaining('MEDISUR</strong>') as unknown,
         text: expect.stringContaining('MEDISUR') as unknown,
       }),
       'operation-123',
     );
     expect(warning).not.toHaveBeenCalled();
+  });
+
+  it('uses the configured public logo without changing the mail subject, text or delivery contract', async () => {
+    const logo = 'https://assets.example.com/public-read/branding/existing-logo.png';
+    config.set('MEDISUR_EMAIL_LOGO_URL', logo);
+    const input: TransactionalMail = { kind: 'test', to: 'patient@example.com' };
+    expect(await service.send(input, 'logo-test')).toEqual({ accepted: true });
+    expect(send).toHaveBeenCalledWith({ to: input.to, ...renderMail(input, logo) }, 'logo-test');
+    expect(renderMail(input, logo).html).toContain(`<img src="${logo}"`);
+    expect(renderMail(input, logo).text).toBe(renderMail(input).text);
+    expect(renderMail(input, logo).subject).toBe(renderMail(input).subject);
+  });
+
+  it.each([
+    undefined,
+    '',
+    'not-a-url',
+    'http://assets.example/logo.png',
+    'javascript:alert(1)',
+    'https://user:secret@assets.example/logo.png',
+    'https://assets.example/logo.png?X-Amz-Signature=secret',
+    'https://assets.example/logo.png#token',
+  ])('falls back safely for a missing or unsafe logo URL: %s', (logo) => {
+    const mail = renderMail({ kind: 'test', to: 'patient@example.com' }, logo);
+    expect(mail.html).toContain('MEDISUR</strong>');
+    expect(mail.html).not.toContain('<img');
+    expect(mail.html).not.toContain('secret');
+  });
+
+  it('escapes public image attributes and preserves email-compatible sizing', () => {
+    const mail = renderMail(
+      { kind: 'test', to: 'patient@example.com' },
+      'https://assets.example/public-read/logo&a.png',
+    );
+    expect(mail.html).toContain('logo&amp;a.png');
+    expect(mail.html).toContain('width="180" alt="MEDISUR"');
+    expect(mail.html).toContain('max-width:100%;height:auto;border:0;');
+    expect(mail.html).not.toContain('width:18px');
   });
 
   it('renders the SMTP test message with the expected subject and content', () => {

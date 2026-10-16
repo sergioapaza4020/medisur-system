@@ -22,6 +22,36 @@ La validación existente en `mail.config.ts` se ejecuta al construir el provider
 
 ## Transporte y errores
 
+### Logo público de los correos
+
+`MEDISUR_EMAIL_LOGO_URL` es una variable opcional del backend con la URL HTTPS
+pública y estable del logo existente en el bucket Neon `public-read`. No se utiliza
+una URL firmada ni se necesitan credenciales o un SDK S3 para mostrar la imagen.
+No había configuración de storage ni helpers de URLs públicas en el repositorio;
+se utiliza la URL completa para evitar duplicar endpoint, región y bucket.
+
+Objeto confirmado: `logo.png`. URL pública verificada mediante GET anónimo (200,
+`image/png`):
+
+```text
+https://br-dry-sunset-b4a4y2vv.storage.c-6.us-east-2.aws.neon.tech/public-read/logo.png
+```
+
+El endpoint proporcionado corresponde a `us-east-2`. Neon usa URLs path-style
+`<endpoint>/<bucket>/<key>`; ver la [documentación de Object Storage](https://neon.com/docs/storage/get-started).
+El listado anónimo del bucket devuelve 403, mientras que el objeto permite lectura
+anónima. No se modifican políticas, buckets ni objetos y no se sube un nuevo logo.
+
+`MailService` pasa la configuración a `renderMail`; el header incluye un `<img>`
+con alt MEDISUR, ancho 180 y estilos inline compatibles con correo. El texto plano,
+asunto y contenido restante se conservan. Sin URL o con una URL inválida, HTTP,
+con credenciales, query o fragmento se muestra MEDISUR como texto. Se escapan los
+atributos HTML. El fallback de configuración no descarga ni comprueba la imagen al
+enviar; algunos clientes pueden bloquear imágenes externas y mostrar su texto alt.
+
+La configuración local debe conservarse fuera de Git. En producción se debe
+configurar la URL pública correspondiente al asset de esa instancia.
+
 Se utiliza `smtp.gmail.com:465`, TLS y `auth: { user, pass }`. No se requiere Google Cloud, OAuth2, access token ni refresh token; las variables `MAIL_GOOGLE_CLIENT_ID`, `MAIL_GOOGLE_CLIENT_SECRET` y `MAIL_GOOGLE_REFRESH_TOKEN` se retiran del código y del ejemplo. Si persisten en un entorno privado, ya no se consultan y pueden retirarse de su configuración.
 
 `MAIL_TIMEOUT_MS` configura los límites soportados de conexión, saludo, socket y DNS. Son límites de conexión/inactividad, no un plazo total exacto de entrega. Se conserva la validación de certificados; logging y debug de Nodemailer quedan desactivados.

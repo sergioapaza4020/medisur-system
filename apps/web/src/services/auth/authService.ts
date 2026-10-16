@@ -4,6 +4,13 @@ import type { ApiResponse, AuthUser, LoginCredentials, LoginTokens, PatientRegis
 import { clearTokens, getRefreshToken, saveTokens } from '@/utils/http/authCookies';
 
 export const authService = {
+  async validateRecoveryToken(token: string): Promise<void> {
+    await apiClient.post('/auth/reset-password/validate', { token });
+  },
+  async resetPassword(token: string, password: string, confirmPassword: string): Promise<void> {
+    await apiClient.post('/auth/reset-password', { token, password, confirmPassword });
+    clearTokens();
+  },
   async requestPasswordRecovery(email: string): Promise<string> {
     const { data } = await apiClient.post<ApiResponse<null>>('/auth/forgot-password', {
       email: email.trim().toLowerCase(),

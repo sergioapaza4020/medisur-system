@@ -54,6 +54,34 @@ beforeEach(() => {
 });
 
 describe('MEDISUR authentication using the existing HTTP client', () => {
+  it('validates and resets using JSON bodies in the shared client, clearing local authentication only on success', async () => {
+    saveTokens('old-access', 'old-refresh');
+    apiClient.defaults.adapter = (config) => {
+      calls.push(config);
+      return Promise.resolve(success(config, null));
+    };
+    const token = 'a'.repeat(64);
+    await authService.validateRecoveryToken(token);
+    expect(getAccessToken()).toBe('old-access');
+    await authService.resetPassword(token, 'NuevaClave123', 'NuevaClave123');
+    expect(calls.map((call) => call.url)).toEqual(['/auth/reset-password/validate', '/auth/reset-password']);
+    expect(JSON.parse(calls[0].data as string)).toEqual({ token });
+    expect(JSON.parse(calls[1].data as string)).toEqual({
+      token,
+      password: 'NuevaClave123',
+      confirmPassword: 'NuevaClave123',
+    });
+    expect(calls.every((call) => call.withCredentials)).toBe(true);
+    expect(getAccessToken()).toBeUndefined();
+    expect(getRefreshToken()).toBeUndefined();
+  });
+  it('preserves local authentication when reset is rejected and exposes the common API error', async () => {
+    saveTokens('old-access', 'old-refresh');
+    apiClient.defaults.adapter = (config) => failure(config, 400, 'Enlace inválido');
+    await expect(authService.resetPassword('a'.repeat(64), 'NuevaClave123', 'NuevaClave123')).rejects.toThrow();
+    expect(getAccessToken()).toBe('old-access');
+    expect(getRefreshToken()).toBe('old-refresh');
+  });
   it('requests recovery through the central client without creating a session or sending privileged fields', async () => {
     apiClient.defaults.adapter = (config) => {
       calls.push(config);
