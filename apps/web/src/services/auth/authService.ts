@@ -4,6 +4,15 @@ import type { ApiResponse, AuthUser, LoginCredentials, LoginTokens, PatientRegis
 import { clearTokens, getRefreshToken, saveTokens } from '@/utils/http/authCookies';
 
 export const authService = {
+  async requestPasswordRecovery(email: string): Promise<string> {
+    const { data } = await apiClient.post<ApiResponse<null>>('/auth/forgot-password', {
+      email: email.trim().toLowerCase(),
+    });
+    return (
+      data.message ||
+      'Si existe una cuenta asociada a este correo, recibirás instrucciones para restablecer tu contraseña.'
+    );
+  },
   async register(patient: PatientRegistration): Promise<void> {
     await apiClient.post('/auth/register', {
       name: patient.name,
