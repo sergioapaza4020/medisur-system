@@ -65,7 +65,9 @@ describe('MEDISUR access seed', () => {
           ? MEDISUR_PERMISSION_NAMES.filter((name) => MEDISUR_STAFF_PERMISSION_NAMES.includes(name))
           : role.name === 'PATIENT'
             ? MEDISUR_PATIENT_PERMISSION_NAMES
-            : [],
+            : role.name === 'DOCTOR'
+              ? ['schedule.create']
+              : [],
       );
     }
 
