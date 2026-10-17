@@ -49,7 +49,9 @@ export async function seedAccessControl(manager: EntityManager) {
             ? permissions.filter((permission) =>
                 MEDISUR_PATIENT_PERMISSION_NAMES.includes(permission.name),
               )
-            : [];
+            : definition.name === 'DOCTOR'
+              ? permissions.filter((permission) => permission.name === 'schedule.create')
+              : [];
     const existing = await roleRepository.findOne({
       where: { name: definition.name },
       relations: { permissions: true },

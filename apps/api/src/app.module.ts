@@ -15,6 +15,8 @@ import { databaseConfig } from './core/config/database/database.config';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
 import { DoctorsModule } from './modules/doctors/doctors.module';
 
+import { SchedulesModule } from './modules/schedules/schedules.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -31,6 +33,7 @@ import { DoctorsModule } from './modules/doctors/doctors.module';
     PermissionsModule,
     SpecialtiesModule,
     DoctorsModule,
+    SchedulesModule,
   ],
   controllers: [AppController],
   providers: [
