@@ -7,9 +7,68 @@ import { CreateScheduleDto } from 'src/dtos/schedules/create-schedule.dto';
 import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
 import { paginate } from '@common/utils/paginate';
 
+import { AvailabilityQueryDto } from 'src/dtos/schedules/availability-query.dto';
+import { AvailabilityBlock } from '@common/types/availability.type';
+import { PaginatedResult } from '@common/types/pagination.type';
+
 @Injectable()
 export class SchedulesService {
   constructor(private readonly dataSource: DataSource) {}
+
+  async availability(query: AvailabilityQueryDto): Promise<PaginatedResult<AvailabilityBlock>> {
+    const qb = this.dataSource
+      .getRepository(Schedule)
+      .createQueryBuilder('schedule')
+      .innerJoinAndSelect('schedule.doctor', 'doctor', 'doctor.isActive = true')
+      .innerJoin('doctor.user', 'user', 'user.isActive = true')
+      .innerJoin(
+        'user.roles',
+        'doctorRole',
+        'doctorRole.name = :roleName AND doctorRole.isActive = true',
+        { roleName: 'DOCTOR' },
+      )
+      .innerJoinAndSelect('schedule.specialty', 'specialty', 'specialty.isActive = true')
+      .innerJoin(
+        'doctor.specialties',
+        'assignment',
+        'assignment.idSpecialty = specialty.idSpecialty',
+      )
+      .select([
+        'schedule.idSchedule',
+        'schedule.date',
+        'schedule.startTime',
+        'schedule.endTime',
+        'doctor.idDoctor',
+        'specialty.idSpecialty',
+      ])
+      .where('doctor.idDoctor = :idDoctor', { idDoctor: query.idDoctor })
+      .andWhere('schedule.date = :date', { date: query.date })
+      .andWhere('schedule.isActive = true')
+      .andWhere('schedule.startTime < schedule.endTime')
+      .andWhere(
+        '(schedule.date + schedule.startTime) > (CURRENT_TIMESTAMP AT TIME ZONE :timeZone)',
+        { timeZone: 'America/La_Paz' },
+      )
+      .orderBy('schedule.startTime', 'ASC')
+      .addOrderBy('schedule.idSchedule', 'ASC');
+    if (query.idSpecialty !== undefined)
+      qb.andWhere('specialty.idSpecialty = :idSpecialty', { idSpecialty: query.idSpecialty });
+    // EPIC-04: exclude occupied intervals here, before pagination/counting.
+    // Keep the projected interval contract; never persist derived availability.
+    const result = await paginate(qb, query);
+    return {
+      ...result,
+      data: result.data.map((block) => ({
+        idSchedule: block.idSchedule,
+        idDoctor: block.doctor.idDoctor,
+        idSpecialty: block.specialty.idSpecialty,
+        date: block.date,
+        startTime: block.startTime,
+        endTime: block.endTime,
+        timeZone: 'America/La_Paz',
+      })),
+    };
+  }
 
   private async ownDoctor(manager: EntityManager, idUser: number) {
     const doctor = await manager.getRepository(Doctor).findOne({

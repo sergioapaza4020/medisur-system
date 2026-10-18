@@ -61,6 +61,11 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
         renderExpandedMenuItemIcon={{ icon: <i className='ri-circle-line' /> }}
         menuSectionStyles={menuSectionStyles(theme)}
       >
+        {hasPermission('schedule.get-availability') && hasPermission('doctor.get-by-specialty') && (
+          <MenuItem href='/dashboard/schedules/availability' icon={<i className='ri-calendar-check-line' />}>
+            Disponibilidad médica
+          </MenuItem>
+        )}
         {hasPermission('schedule.create') && (
           <MenuItem href='/dashboard/schedules/register' icon={<i className='ri-calendar-line' />}>
             Registrar mi horario

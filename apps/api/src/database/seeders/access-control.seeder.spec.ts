@@ -123,7 +123,7 @@ describe('MEDISUR access seed', () => {
     });
   });
 
-  it('repairs only the patient selection grant and preserves custom or disabled permissions', async () => {
+  it('repairs patient consultation grants and preserves custom or disabled permissions', async () => {
     const permissions = repository<Permission>();
     const roles = repository<Role>();
     const custom = { name: 'custom.read', isActive: true } as Permission;
@@ -138,6 +138,7 @@ describe('MEDISUR access seed', () => {
     await seedAccessControl(manager);
     expect(patient.permissions.map(({ name }) => name)).toEqual([
       'custom.read',
+      'schedule.get-availability',
       'doctor.get-by-specialty',
     ]);
     expect(
@@ -147,6 +148,7 @@ describe('MEDISUR access seed', () => {
     ).toBe(false);
     patient.permissions = [custom];
     consultation.isActive = false;
+    permissions.records.find(({ name }) => name === 'schedule.get-availability')!.isActive = false;
     await seedAccessControl(manager);
     expect(patient.permissions).toEqual([custom]);
     expect(consultation.isActive).toBe(false);
