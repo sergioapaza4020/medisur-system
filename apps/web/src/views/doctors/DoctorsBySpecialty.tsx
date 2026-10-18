@@ -7,12 +7,16 @@ import { Alert, Button, Card, CardContent, CircularProgress, Stack, Typography }
 import { useAuth } from '@/components/auth/AuthGuard';
 import ListPagination from '@/components/pagination/ListPagination';
 import { doctorsService } from '@/services/doctors/doctorsService';
-import type { DoctorSelectionPage, SpecialtySelection, SpecialtySelectionPage } from '@/types/doctors';
+import type { DoctorSelection, DoctorSelectionPage, SpecialtySelection, SpecialtySelectionPage } from '@/types/doctors';
 import type { PaginationQuery } from '@/types/pagination';
 import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 import tableStyles from '@core/styles/table.module.css';
 
-export default function DoctorsBySpecialty() {
+export default function DoctorsBySpecialty({
+  onSelectDoctor,
+}: {
+  onSelectDoctor?: (doctor: DoctorSelection | null, specialty: SpecialtySelection) => void;
+}) {
   const { hasPermission } = useAuth();
   const allowed = hasPermission('doctor.get-by-specialty');
   const [specialtyQuery, setSpecialtyQuery] = useState<PaginationQuery>({ page: 1, limit: 10 });
@@ -95,8 +99,9 @@ export default function DoctorsBySpecialty() {
         <Stack spacing={3}>
           <Typography variant='h5'>Médicos por especialidad</Typography>
           <Typography>
-            Selecciona una especialidad para consultar sus profesionales activos. La consulta no indica horarios ni
-            turnos disponibles.
+            {onSelectDoctor
+              ? 'Selecciona una especialidad y un médico para consultar su disponibilidad.'
+              : 'Selecciona una especialidad para consultar sus profesionales activos. La consulta no indica horarios ni turnos disponibles.'}
           </Typography>
           <Typography variant='h6'>Especialidades activas</Typography>
           {specialtiesLoading ? (
@@ -120,6 +125,7 @@ export default function DoctorsBySpecialty() {
                       variant={selected?.idSpecialty === specialty.idSpecialty ? 'contained' : 'outlined'}
                       onClick={() => {
                         if (!hasPermission('doctor.get-by-specialty')) return;
+                        onSelectDoctor?.(null, specialty);
                         setSelected(specialty);
                         setQuery((current) => ({ ...current, page: 1 }));
                         setError(null);
@@ -161,6 +167,7 @@ export default function DoctorsBySpecialty() {
                         <thead>
                           <tr>
                             <th>Profesional</th>
+                            {onSelectDoctor && <th>Disponibilidad</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -169,6 +176,17 @@ export default function DoctorsBySpecialty() {
                               <td>
                                 {doctor.name} {doctor.lastname}
                               </td>
+                              {onSelectDoctor && (
+                                <td>
+                                  <Button
+                                    onClick={() => {
+                                      if (hasPermission('doctor.get-by-specialty')) onSelectDoctor(doctor, selected);
+                                    }}
+                                  >
+                                    {`Seleccionar ${doctor.name} ${doctor.lastname}`}
+                                  </Button>
+                                </td>
+                              )}
                             </tr>
                           ))}
                         </tbody>

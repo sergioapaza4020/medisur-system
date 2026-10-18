@@ -71,12 +71,12 @@ const doctors = {
   data: [{ idDoctor: 4, name: 'Ana', lastname: 'Pérez' }],
   meta: { page: 1, limit: 10, total: 12, totalPages: 2 },
 };
-function render() {
+function render(onSelectDoctor?: ComponentProps<typeof DoctorsBySpecialty>['onSelectDoctor']) {
   mocks.index = 0;
   mocks.effects = [];
   mocks.buttons.clear();
   mocks.pagination = [];
-  return renderToStaticMarkup(<DoctorsBySpecialty />);
+  return renderToStaticMarkup(<DoctorsBySpecialty onSelectDoctor={onSelectDoctor} />);
 }
 async function flush() {
   for (let i = 0; i < 8; i++) await Promise.resolve();
@@ -225,5 +225,14 @@ describe('Doctors by specialty', () => {
     mocks.denied.add('doctor.get-by-specialty');
     mocks.buttons.get('Pediatría')?.();
     expect(mocks.states[5]).toEqual(cardiology);
+  });
+  it('reuses the operational selector for availability and clears selection on specialty change', () => {
+    loadedDoctors();
+    const select = vi.fn();
+    expect(render(select)).toContain('Seleccionar Ana Pérez');
+    mocks.buttons.get('Seleccionar Ana Pérez')?.();
+    expect(select).toHaveBeenCalledWith(doctors.data[0], cardiology);
+    mocks.buttons.get('Pediatría')?.();
+    expect(select).toHaveBeenLastCalledWith(null, pediatrics);
   });
 });

@@ -30,7 +30,7 @@ export const MEDISUR_PERMISSIONS = {
     'delete',
     'reactivate',
   ],
-  schedule: ['create'],
+  schedule: ['create', 'get-availability'],
   session: ['get-all', 'revoke-one', 'revoke-all'],
   specialty: ['get-all', 'get-one-by-id', 'create', 'update', 'delete', 'reactivate'],
   doctor: ['get-all', 'create', 'delete', 'reactivate', 'assign-specialties', 'get-by-specialty'],
@@ -48,6 +48,7 @@ export const MEDISUR_PERMISSION_NAMES = Object.entries(MEDISUR_PERMISSIONS).flat
 );
 
 export const MEDISUR_STAFF_PERMISSION_NAMES = [
+  'schedule.get-availability',
   'doctor.create',
   'doctor.get-all',
   'doctor.get-by-specialty',
@@ -55,7 +56,10 @@ export const MEDISUR_STAFF_PERMISSION_NAMES = [
   'specialty.get-all',
 ];
 
-export const MEDISUR_PATIENT_PERMISSION_NAMES = ['doctor.get-by-specialty'];
+export const MEDISUR_PATIENT_PERMISSION_NAMES = [
+  'schedule.get-availability',
+  'doctor.get-by-specialty',
+];
 
 // Explicit academic namespaces only; preserve unrelated custom access configuration.
 export const LEGACY_ACADEMIC_NAMESPACES = ['career', 'course', 'subject', 'enrollment', 'academic'];

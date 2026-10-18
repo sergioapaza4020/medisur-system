@@ -27,4 +27,14 @@ describe('Schedule HTTP client', () => {
       schedulesService.create({ idSpecialty: 2, date: '2026-11-02', startTime: '09:00', endTime: '10:00' }),
     ).rejects.toBe(failure);
   });
+  it('queries availability with doctor, optional specialty, date and shared pagination', async () => {
+    const query = { idDoctor: 3, idSpecialty: 2, date: '2026-11-02', page: 2, limit: 5 };
+    const page = { data: [], meta: { page: 2, limit: 5, total: 0, totalPages: 0 } };
+    vi.mocked(apiClient.get).mockResolvedValue({ data: page });
+    expect(await schedulesService.availability(query)).toEqual(page);
+    expect(apiClient.get).toHaveBeenCalledWith('/schedules/availability', { params: query });
+    const failure = new Error('Fecha inválida');
+    vi.mocked(apiClient.get).mockRejectedValueOnce(failure);
+    await expect(schedulesService.availability(query)).rejects.toBe(failure);
+  });
 });
