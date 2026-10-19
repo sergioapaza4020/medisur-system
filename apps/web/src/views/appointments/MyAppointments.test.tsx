@@ -67,6 +67,7 @@ vi.mock('@/components/pagination/ListPagination', () => ({
     return <span>Paginación común</span>;
   },
 }));
+vi.mock('./PatientProposals', () => ({ default: () => <button>Ver propuestas</button> }));
 vi.mock('./CancelAppointment', () => ({
   default: (props: ComponentProps<typeof CancelAppointment>) => {
     mocks.cancellation = props;

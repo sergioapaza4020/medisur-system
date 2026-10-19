@@ -21,6 +21,13 @@ import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selectio
 import { BookingPatient } from '@common/types/booking-patient.type';
 import { DoctorAgendaQueryDto } from 'src/dtos/appointments/doctor-agenda-query.dto';
 import { DoctorAppointment } from '@common/types/doctor-appointment.type';
+import {
+  ReschedulingProposal,
+  ProposalStatus,
+} from 'src/entities/appointments/rescheduling-proposal.entity';
+import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
+import { ReschedulingAvailabilityQueryDto } from 'src/dtos/appointments/rescheduling-availability-query.dto';
+import { PatientReschedulingProposal } from '@common/types/rescheduling-proposal.type';
 import { SchedulesService } from '../schedules/schedules.service';
 
 @Injectable()
@@ -29,6 +36,158 @@ export class AppointmentsService {
     private readonly dataSource: DataSource,
     private readonly schedules: SchedulesService,
   ) {}
+
+  private async reschedulingAppointment(idAppointment: number, idUser: number) {
+    const doctor = await this.schedules.ownDoctor(this.dataSource.manager, idUser);
+    const appointment = await this.dataSource.getRepository(Appointment).findOne({
+      where: {
+        idAppointment,
+        doctor: { idDoctor: doctor.idDoctor },
+        isActive: true,
+        deletedAt: IsNull(),
+      },
+      withDeleted: true,
+      relations: { doctor: true, specialty: true },
+    });
+    if (!appointment) throw new NotFoundException('Cita propia no encontrada');
+    if (appointment.status !== AppointmentStatus.CANCELLED)
+      throw new ConflictException('Solo se puede proponer reprogramación para una cita cancelada');
+    return appointment;
+  }
+
+  async reschedulingAvailability(
+    idAppointment: number,
+    idUser: number,
+    query: ReschedulingAvailabilityQueryDto,
+  ) {
+    const appointment = await this.reschedulingAppointment(idAppointment, idUser);
+    return this.schedules.availability({
+      ...query,
+      idDoctor: appointment.doctor.idDoctor,
+      idSpecialty: appointment.specialty.idSpecialty,
+    });
+  }
+
+  async proposeRescheduling(idAppointment: number, idUser: number, dto: CreateAppointmentDto) {
+    const initial = await this.reschedulingAppointment(idAppointment, idUser);
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        // Same serialization as booking, cancellation and schedule edits.
+        await manager.getRepository(Doctor).findOne({
+          where: { idDoctor: initial.doctor.idDoctor },
+          lock: { mode: 'pessimistic_write' },
+        });
+        const doctor = await this.schedules.ownDoctor(manager, idUser);
+        if (doctor.idDoctor !== initial.doctor.idDoctor)
+          throw new ForbiddenException('El perfil médico ya no es válido para esta cita');
+        const target = await manager.getRepository(Schedule).findOne({
+          where: { idSchedule: dto.idSchedule, doctor: { idDoctor: doctor.idDoctor } },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!target || target.version !== dto.expectedVersion)
+          throw new ConflictException('El horario cambió o ya no está disponible');
+        const original = await manager
+          .getRepository(Appointment)
+          .createQueryBuilder('appointment')
+          .where(
+            'appointment.idAppointment = :idAppointment AND appointment.id_doctor = :idDoctor',
+            { idAppointment, idDoctor: doctor.idDoctor },
+          )
+          .andWhere('appointment.isActive = true')
+          .setLock('pessimistic_write')
+          .getOne();
+        if (!original) throw new NotFoundException('Cita propia no encontrada');
+        if (original.status !== AppointmentStatus.CANCELLED)
+          throw new ConflictException(
+            'Solo se puede proponer reprogramación para una cita cancelada',
+          );
+        const schedule = await this.schedules
+          .availableQuery(manager)
+          .andWhere('schedule.idSchedule = :idSchedule', { idSchedule: dto.idSchedule })
+          .andWhere('doctor.idDoctor = :idDoctor AND specialty.idSpecialty = :idSpecialty', {
+            idDoctor: doctor.idDoctor,
+            idSpecialty: initial.specialty.idSpecialty,
+          })
+          .andWhere(
+            '(schedule.date + schedule.startTime) > (clock_timestamp() AT TIME ZONE :timeZone)',
+          )
+          .getOne();
+        if (!schedule)
+          throw new ConflictException('El horario ya no está disponible para esta cita');
+        const specialty = await manager.getRepository(Specialty).findOne({
+          where: { idSpecialty: initial.specialty.idSpecialty, isActive: true },
+          lock: { mode: 'pessimistic_read' },
+        });
+        if (!specialty) throw new ConflictException('La especialidad ya no está disponible');
+        if (
+          schedule.date === original.date &&
+          schedule.startTime === original.startTime &&
+          schedule.endTime === original.endTime
+        )
+          throw new ConflictException('Selecciona una fecha u horario diferente al original');
+        // Persist the notification context atomically; proposals do not reserve the target block.
+        const proposal = await manager.getRepository(ReschedulingProposal).save({
+          appointment: original,
+          schedule,
+          scheduleVersion: schedule.version,
+          originalDate: original.date,
+          originalStartTime: original.startTime,
+          originalEndTime: original.endTime,
+          date: schedule.date,
+          startTime: schedule.startTime,
+          endTime: schedule.endTime,
+          status: ProposalStatus.PENDING,
+          createdBy: idUser,
+        });
+        return this.proposalView(proposal);
+      });
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        (error.driverError as { code?: string; constraint?: string }).code === '23505' &&
+        (error.driverError as { constraint?: string }).constraint ===
+          'UQ_pending_proposal_appointment'
+      )
+        throw new ConflictException('Esta cita ya tiene una propuesta pendiente');
+      throw error;
+    }
+  }
+
+  private proposalView(proposal: ReschedulingProposal): PatientReschedulingProposal {
+    return {
+      idProposal: proposal.idProposal,
+      originalDate: proposal.originalDate,
+      originalStartTime: proposal.originalStartTime,
+      originalEndTime: proposal.originalEndTime,
+      date: proposal.date,
+      startTime: proposal.startTime,
+      endTime: proposal.endTime,
+      status: proposal.status,
+      timeZone: 'America/La_Paz',
+    };
+  }
+
+  async patientProposals(
+    idAppointment: number,
+    idUser: number,
+    query: PaginationQueryDto,
+  ): Promise<PaginatedResult<PatientReschedulingProposal>> {
+    const original = await this.dataSource
+      .getRepository(Appointment)
+      .findOneBy({ idAppointment, patient: { idUser } });
+    if (!original) throw new NotFoundException('Cita propia no encontrada');
+    const qb = this.dataSource
+      .getRepository(ReschedulingProposal)
+      .createQueryBuilder('proposal')
+      .innerJoin('proposal.appointment', 'appointment', 'appointment.id_patient = :idUser', {
+        idUser,
+      })
+      .where('appointment.idAppointment = :idAppointment', { idAppointment })
+      .orderBy('proposal.createdAt', 'DESC')
+      .addOrderBy('proposal.idProposal', 'DESC');
+    const page = await paginate(qb, query);
+    return { ...page, data: page.data.map((proposal) => this.proposalView(proposal)) };
+  }
 
   cancelMine(idAppointment: number, idUser: number) {
     return this.cancel(idAppointment, idUser);

@@ -1,3 +1,10 @@
+import type {
+  ProposalAvailabilityPage,
+  ProposalAvailabilityQuery,
+  ProposalsPage,
+  ReschedulingProposal,
+} from '@/types/rescheduling-proposal';
+import type { PaginationQuery } from '@/types/pagination';
 import { apiClient } from '../http/axiosClient';
 import type { AppointmentsPage, AppointmentsQuery } from '@/types/appointments';
 import type { BookingPatientsPage, PatientSelectionQuery } from '@/types/booking-patient';
@@ -12,6 +19,29 @@ export type Appointment = Omit<AvailabilityBlock, 'version'> & {
 };
 
 export const appointmentsService = {
+  async proposeRescheduling(idAppointment: number, block: AvailabilityBlock): Promise<ReschedulingProposal> {
+    return (
+      await apiClient.post<ApiResponse<ReschedulingProposal>>(`/appointments/${idAppointment}/rescheduling-proposals`, {
+        idSchedule: block.idSchedule,
+        expectedVersion: block.version,
+      })
+    ).data.data;
+  },
+  async reschedulingAvailability(
+    idAppointment: number,
+    query: ProposalAvailabilityQuery,
+  ): Promise<ProposalAvailabilityPage> {
+    return (
+      await apiClient.get<ProposalAvailabilityPage>(`/appointments/${idAppointment}/rescheduling-availability`, {
+        params: query,
+      })
+    ).data;
+  },
+  async patientProposals(idAppointment: number, query: PaginationQuery): Promise<ProposalsPage> {
+    return (
+      await apiClient.get<ProposalsPage>(`/appointments/${idAppointment}/rescheduling-proposals`, { params: query })
+    ).data;
+  },
   async cancelMine(
     idAppointment: number,
   ): Promise<{ idAppointment: number; status: 'CANCELLED'; cancelledAt: string }> {

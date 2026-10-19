@@ -31,6 +31,7 @@ import type { DoctorAppointment } from '@/types/doctor-agenda';
 import { boliviaToday, displayDate, monthDates } from '@/views/schedules/availabilityDates';
 import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 import CancelAppointment from './CancelAppointment';
+import ProposeRescheduling from './ProposeRescheduling';
 import {
   agendaPeriod,
   boliviaClock,
@@ -466,9 +467,19 @@ export default function DoctorAgenda() {
               </DialogContent>
             )}
             <DialogActions>
+              {selectedEvent?.status === 'CANCELLED' && hasPermission('appointment.propose-rescheduling') && (
+                <ProposeRescheduling
+                  key={`${idUser}/${selectedEvent.idAppointment}`}
+                  appointment={selectedEvent}
+                  onResult={(success, message) => {
+                    if (idUser) setFeedback({ idUser, success, message });
+                    setSelected(null);
+                    setRefresh((value) => value + 1);
+                  }}
+                />
+              )}
               {selectedEvent && hasPermission('appointment.cancel-as-doctor') && (
                 <CancelAppointment
-                  key={`${idUser}/${selectedEvent.idAppointment}`}
                   appointment={selectedEvent}
                   mode='doctor'
                   onResult={(success, message) => {

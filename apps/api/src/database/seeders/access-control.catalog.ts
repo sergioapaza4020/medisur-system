@@ -37,6 +37,7 @@ export const MEDISUR_PERMISSIONS = {
     'get-agenda',
     'cancel-mine',
     'cancel-as-doctor',
+    'propose-rescheduling',
   ],
   schedule: ['create', 'get-availability', 'update'],
   session: ['get-all', 'revoke-one', 'revoke-all'],

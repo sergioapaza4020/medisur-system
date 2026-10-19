@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   viewChange: null as null | ((event: unknown, value: string) => void),
   dialog: false,
   canCancel: true,
+  canPropose: true,
   cancellation: null as null | { mode: string; onResult: (success: boolean, message: string) => void },
 }));
 vi.mock('react', async (original) => ({
@@ -65,6 +66,7 @@ vi.mock('@mui/material', async (original) => {
     },
   };
 });
+vi.mock('./ProposeRescheduling', () => ({ default: () => <button>Proponer reprogramación</button> }));
 vi.mock('./CancelAppointment', () => ({
   default: (props: { mode: string; onResult: (success: boolean, message: string) => void }) => {
     mocks.cancellation = props;
@@ -75,7 +77,11 @@ vi.mock('@/components/auth/AuthGuard', () => ({
   useAuth: () => ({
     user: { idUser: mocks.idUser },
     hasPermission: (permission: string) =>
-      permission === 'appointment.cancel-as-doctor' ? mocks.canCancel : mocks.allowed,
+      permission === 'appointment.cancel-as-doctor'
+        ? mocks.canCancel
+        : permission === 'appointment.propose-rescheduling'
+          ? mocks.canPropose
+          : mocks.allowed,
   }),
 }));
 vi.mock('@/services/appointments/appointmentsService', () => ({ appointmentsService: { agenda: mocks.agenda } }));
@@ -116,6 +122,7 @@ beforeEach(() => {
   mocks.allowed = true;
   mocks.idUser = 7;
   mocks.canCancel = true;
+  mocks.canPropose = true;
   mocks.cancellation = null;
   mocks.agenda.mockResolvedValue({ data: [event] });
 });
@@ -181,6 +188,14 @@ describe('Medical calendar', () => {
     expect(mocks.agenda).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-19', to: '2026-10-25' }));
     mocks.idUser = 8;
     expect(render()).not.toContain('Cita cancelada correctamente');
+  });
+  it('offers a proposal only for cancelled appointments with the specific permission', async () => {
+    mocks.agenda.mockResolvedValue({ data: [{ ...event, status: 'CANCELLED' }] });
+    await load();
+    mocks.buttons.get([...mocks.buttons.keys()].find((value) => value.includes('Ana Pérez'))!)?.();
+    expect(render()).toContain('Proponer reprogramación');
+    mocks.canPropose = false;
+    expect(render()).not.toContain('Proponer reprogramación');
   });
   it('opens an operational summary when a visit is selected', async () => {
     await load();
