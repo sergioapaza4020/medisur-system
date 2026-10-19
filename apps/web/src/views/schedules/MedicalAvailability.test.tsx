@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   availability: vi.fn(),
   select: null as null | ComponentProps<typeof DoctorsBySpecialty>['onSelectDoctor'],
   calendar: null as null | ComponentProps<typeof AvailabilityCalendar>,
+  slots: null as null | ComponentProps<typeof AvailabilitySlots>,
 }));
 vi.mock('react', async (original) => {
   const actual = await original<typeof ReactModule>();
@@ -25,7 +26,7 @@ vi.mock('react', async (original) => {
     ...actual,
     useState: (initial: unknown) => {
       const index = mocks.index++;
-      if (index >= 5) return [typeof initial === 'function' ? (initial as () => unknown)() : initial, vi.fn()];
+      if (index >= 6) return [typeof initial === 'function' ? (initial as () => unknown)() : initial, vi.fn()];
       if (!(index in mocks.states))
         mocks.states[index] = typeof initial === 'function' ? (initial as () => unknown)() : initial;
       return [
@@ -60,10 +61,20 @@ vi.mock('./AvailabilityCalendar', async (original) => {
     },
   };
 });
+vi.mock('./AvailabilitySlots', async (original) => {
+  const actual = await original<{ default: typeof AvailabilitySlots }>();
+  return {
+    default: (props: ComponentProps<typeof AvailabilitySlots>) => {
+      mocks.slots = props;
+      return <actual.default {...props} />;
+    },
+  };
+});
 const doctor = { idDoctor: 3, name: 'Ana', lastname: 'Pérez' };
 const specialty = { idSpecialty: 2, name: 'Cardiología' };
 const block = {
   idSchedule: 9,
+  version: 1,
   idDoctor: 3,
   idSpecialty: 2,
   date: '2026-11-02',
@@ -87,7 +98,8 @@ beforeEach(() => {
   mocks.denied.clear();
   mocks.select = null;
   mocks.calendar = null;
-  mocks.states = [{ doctor, specialty }, '2026-11', '', null, 0];
+  mocks.slots = null;
+  mocks.states = [{ doctor, specialty }, '2026-11', '', null, 0, null];
   mocks.availability.mockResolvedValue({ data: [], meta: { totalPages: 0 } });
 });
 describe('Medical availability calendar', () => {
@@ -128,8 +140,30 @@ describe('Medical availability calendar', () => {
     const html = render();
     expect(html).toContain('09:00–11:15');
     expect(html).toContain('aria-pressed="true"');
-    expect(html).not.toContain('Reservar');
+    expect(html).toContain('Reservar');
     expect(mocks.availability).toHaveBeenCalledTimes(1);
+  });
+  it('keeps consultation available without granting appointment creation', async () => {
+    mocks.denied.add('appointment.create');
+    mocks.availability.mockResolvedValue({ data: [block], meta: { totalPages: 1 } });
+    await load();
+    render();
+    mocks.calendar?.onSelect(block.date);
+    expect(render()).not.toContain('Reservar');
+    expect(mocks.slots?.onReserve).toBeUndefined();
+  });
+  it.each([true, false])('refreshes availability and displays booking feedback (success=%s)', async (success) => {
+    mocks.availability.mockResolvedValue({ data: [block], meta: { totalPages: 1 } });
+    await load();
+    render();
+    mocks.calendar?.onSelect(block.date);
+    render();
+    mocks.slots?.onReserve?.(success, success ? 'Cita reservada' : 'Horario ocupado');
+    expect(render()).toContain(success ? 'Cita reservada' : 'Horario ocupado');
+    expect(render()).toContain('Consultando disponibilidad');
+    mocks.availability.mockResolvedValue({ data: [], meta: { totalPages: 0 } });
+    await load();
+    expect(render()).not.toContain('09:00�11:15');
   });
   it('loads subsequent pages without dropping available days', async () => {
     mocks.availability

@@ -1,6 +1,7 @@
-// Intervals may be shortened or split by occupied appointments in EPIC-04.
+// Each published block is reserved as a whole.
 export interface AvailabilityBlock {
   idSchedule: number;
+  version: number;
   idDoctor: number;
   idSpecialty: number;
   date: string;

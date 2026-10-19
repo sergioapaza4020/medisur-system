@@ -9,6 +9,7 @@ export interface AvailabilityQuery extends PaginationQuery {
 }
 export interface AvailabilityBlock {
   idSchedule: number;
+  version: number;
   idDoctor: number;
   idSpecialty: number;
   date: string;

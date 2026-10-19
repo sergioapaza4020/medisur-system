@@ -33,7 +33,33 @@ export class SchedulesService {
           'Selecciona un rango válido de hasta 31 días, sin combinarlo con date',
         );
     }
-    const qb = this.dataSource
+    const qb = this.availableQuery(this.dataSource.manager).andWhere(
+      'doctor.idDoctor = :idDoctor',
+      { idDoctor: query.idDoctor },
+    );
+    if (query.date !== undefined) qb.andWhere('schedule.date = :date', { date: query.date });
+    else qb.andWhere('schedule.date BETWEEN :from AND :to', { from: query.from, to: query.to });
+    if (query.idSpecialty !== undefined)
+      qb.andWhere('specialty.idSpecialty = :idSpecialty', { idSpecialty: query.idSpecialty });
+    const result = await paginate(qb, query);
+    return {
+      ...result,
+      data: result.data.map((block) => ({
+        idSchedule: block.idSchedule,
+        version: block.version,
+        idDoctor: block.doctor.idDoctor,
+        idSpecialty: block.specialty.idSpecialty,
+        date: block.date,
+        startTime: block.startTime,
+        endTime: block.endTime,
+        timeZone: 'America/La_Paz',
+      })),
+    };
+  }
+
+  // Reused by booking inside its transaction after acquiring the doctor/schedule locks.
+  availableQuery(manager: EntityManager) {
+    return manager
       .getRepository(Schedule)
       .createQueryBuilder('schedule')
       .innerJoinAndSelect('schedule.doctor', 'doctor', 'doctor.isActive = true')
@@ -52,41 +78,25 @@ export class SchedulesService {
       )
       .select([
         'schedule.idSchedule',
+        'schedule.version',
         'schedule.date',
         'schedule.startTime',
         'schedule.endTime',
         'doctor.idDoctor',
         'specialty.idSpecialty',
       ])
-      .where('doctor.idDoctor = :idDoctor', { idDoctor: query.idDoctor })
-      .andWhere('schedule.isActive = true')
+      .where('schedule.isActive = true')
       .andWhere('schedule.startTime < schedule.endTime')
       .andWhere(
         '(schedule.date + schedule.startTime) > (CURRENT_TIMESTAMP AT TIME ZONE :timeZone)',
         { timeZone: 'America/La_Paz' },
       )
+      .andWhere(
+        'NOT EXISTS (SELECT 1 FROM appointments occupied WHERE occupied.id_schedule = schedule.id_schedule)',
+      )
       .orderBy('schedule.date', 'ASC')
       .addOrderBy('schedule.startTime', 'ASC')
       .addOrderBy('schedule.idSchedule', 'ASC');
-    if (query.date !== undefined) qb.andWhere('schedule.date = :date', { date: query.date });
-    else qb.andWhere('schedule.date BETWEEN :from AND :to', { from: query.from, to: query.to });
-    if (query.idSpecialty !== undefined)
-      qb.andWhere('specialty.idSpecialty = :idSpecialty', { idSpecialty: query.idSpecialty });
-    // EPIC-04: exclude occupied intervals here, before pagination/counting.
-    // Keep the projected interval contract; never persist derived availability.
-    const result = await paginate(qb, query);
-    return {
-      ...result,
-      data: result.data.map((block) => ({
-        idSchedule: block.idSchedule,
-        idDoctor: block.doctor.idDoctor,
-        idSpecialty: block.specialty.idSpecialty,
-        date: block.date,
-        startTime: block.startTime,
-        endTime: block.endTime,
-        timeZone: 'America/La_Paz',
-      })),
-    };
   }
 
   private async ownDoctor(manager: EntityManager, idUser: number) {
@@ -195,16 +205,13 @@ export class SchedulesService {
       throw new BadRequestException('El horario se solapa con otro bloque activo del médico');
   }
 
-  private async assertAppointmentsAllowChange(manager: EntityManager) {
-    // Fail closed when EPIC-04 is installed. Replace with an affected-appointments
-    // check in THIS transaction, using the same doctor lock as appointment booking.
-    const rows: { present: boolean }[] = await manager.query(
-      "SELECT to_regclass('appointments') IS NOT NULL AS present",
+  private async assertAppointmentsAllowChange(manager: EntityManager, idSchedule: number) {
+    const rows: { occupied: boolean }[] = await manager.query(
+      'SELECT EXISTS (SELECT 1 FROM appointments WHERE id_schedule = $1) AS occupied',
+      [idSchedule],
     );
-    if (rows[0]?.present !== false)
-      throw new ConflictException(
-        'La edición de horarios está bloqueada hasta integrar la validación de citas de EPIC-04',
-      );
+    if (rows[0]?.occupied !== false)
+      throw new ConflictException('No se puede modificar un horario con una cita reservada');
   }
 
   async update(idSchedule: number, dto: UpdateScheduleDto, idUser: number) {
@@ -239,7 +246,7 @@ export class SchedulesService {
         before.startTime === dto.startTime &&
         before.endTime === dto.endTime;
       if (unchanged && before.isActive === dto.isActive) return this.project(current);
-      await this.assertAppointmentsAllowChange(manager);
+      await this.assertAppointmentsAllowChange(manager, idSchedule);
       const specialty =
         unchanged && !dto.isActive
           ? current.specialty

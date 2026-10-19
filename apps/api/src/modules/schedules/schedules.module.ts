@@ -8,6 +8,7 @@ import { SchedulesController } from 'src/controllers/schedules/schedules.control
 @Module({
   imports: [TypeOrmModule.forFeature([Schedule, ScheduleHistory])],
   providers: [SchedulesService],
+  exports: [SchedulesService],
   controllers: [SchedulesController],
 })
 export class SchedulesModule {}

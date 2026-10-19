@@ -55,7 +55,7 @@ describe('Schedule changes and traceability', () => {
       createQueryBuilder: jest.fn().mockReturnValue(qb),
     };
     history = { save: jest.fn().mockResolvedValue({}) };
-    query = jest.fn().mockResolvedValue([{ present: false }]);
+    query = jest.fn().mockResolvedValue([{ occupied: false }]);
     const manager = {
       query,
       getRepository: (entity: unknown) =>
@@ -162,8 +162,8 @@ describe('Schedule changes and traceability', () => {
     expect(schedules.save).not.toHaveBeenCalled();
     expect(history.save).not.toHaveBeenCalled();
   });
-  it.each([{ rows: [{ present: true }] }, { rows: [] }])(
-    'fails closed when appointments exist or the policy result is unknown',
+  it.each([{ rows: [{ occupied: true }] }, { rows: [] }])(
+    'rejects editing an occupied schedule or an unknown policy result',
     async ({ rows }) => {
       query.mockResolvedValue(rows);
       await expect(service.update(9, dto, 7)).rejects.toBeInstanceOf(ConflictException);
