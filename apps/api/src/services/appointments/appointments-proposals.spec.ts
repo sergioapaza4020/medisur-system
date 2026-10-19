@@ -65,7 +65,8 @@ describe('Rescheduling proposal rules', () => {
         if (entity === Specialty)
           return { findOne: jest.fn().mockResolvedValue({ idSpecialty: 4 }) };
         if (entity === Appointment) return { createQueryBuilder: () => lockedOriginal };
-        if (entity === ReschedulingProposal) return { save };
+        if (entity === ReschedulingProposal)
+          return { save, existsBy: jest.fn().mockResolvedValue(false) };
         throw new Error('Unexpected repository');
       },
     };

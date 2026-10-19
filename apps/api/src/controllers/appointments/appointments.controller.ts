@@ -11,6 +11,7 @@ import { DoctorAgendaQueryDto } from 'src/dtos/appointments/doctor-agenda-query.
 import { CancelDoctorAppointmentDto } from 'src/dtos/appointments/cancel-doctor-appointment.dto';
 import { ReschedulingAvailabilityQueryDto } from 'src/dtos/appointments/rescheduling-availability-query.dto';
 import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
+import { RespondReschedulingDto } from 'src/dtos/appointments/respond-rescheduling.dto';
 import { AppointmentsService } from 'src/services/appointments/appointments.service';
 
 @ApiBearerAuth('access-token')
@@ -64,6 +65,26 @@ export class AppointmentsController {
     @Query() query: PaginationQueryDto,
   ) {
     return this.service.patientProposals(id, user.idUser, query);
+  }
+
+  @Patch('rescheduling-proposals/:idProposal/response')
+  @Permissions('appointment.respond-rescheduling')
+  respondRescheduling(
+    @Param('idProposal', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: RespondReschedulingDto,
+  ) {
+    return this.service.respondRescheduling(id, user.idUser, dto.status);
+  }
+
+  @Get(':idAppointment/rescheduling-proposals/doctor')
+  @Permissions('appointment.get-agenda')
+  doctorProposals(
+    @Param('idAppointment', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtPayload,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.service.doctorProposals(id, user.idUser, query);
   }
 
   @Get('agenda')

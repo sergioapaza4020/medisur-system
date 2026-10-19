@@ -105,3 +105,22 @@ it('uses scoped rescheduling endpoints and the existing pagination envelope', as
     expectedVersion: 2,
   });
 });
+
+it('responds with only the decision and reads scoped doctor history', async () => {
+  const result = { idProposal: 3, status: 'ACCEPTED', resultingAppointmentId: 20 };
+  vi.mocked(apiClient.patch).mockResolvedValue({ data: { data: result } });
+  expect(await appointmentsService.respondRescheduling(3, 'ACCEPTED')).toEqual(result);
+  expect(apiClient.patch).toHaveBeenCalledWith('/appointments/rescheduling-proposals/3/response', {
+    status: 'ACCEPTED',
+  });
+  await appointmentsService.respondRescheduling(3, 'REJECTED');
+  expect(apiClient.patch).toHaveBeenLastCalledWith('/appointments/rescheduling-proposals/3/response', {
+    status: 'REJECTED',
+  });
+  const page = { data: [], meta: { page: 2, limit: 5, total: 0, totalPages: 0 } };
+  vi.mocked(apiClient.get).mockResolvedValue({ data: page });
+  expect(await appointmentsService.doctorProposals(9, { page: 2, limit: 5 })).toEqual(page);
+  expect(apiClient.get).toHaveBeenCalledWith('/appointments/9/rescheduling-proposals/doctor', {
+    params: { page: 2, limit: 5 },
+  });
+});

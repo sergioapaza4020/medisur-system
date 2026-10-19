@@ -20,6 +20,7 @@ import {
   ReschedulingProposal,
   ProposalStatus,
 } from 'src/entities/appointments/rescheduling-proposal.entity';
+import { ReschedulingResponses1792800000000 } from 'src/database/migrations/1792800000000-ReschedulingResponses';
 import { ReschedulingProposals1792710000000 } from 'src/database/migrations/1792710000000-ReschedulingProposals';
 import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
 import { CreateAppointments1792450000000 } from 'src/database/migrations/1792450000000-CreateAppointments';
@@ -73,6 +74,7 @@ postgres('Appointment booking against PostgreSQL', () => {
     await new AppointmentCancellation1792540000000().up(runner);
     await new DoctorAppointmentCancellation1792630000000().up(runner);
     await new ReschedulingProposals1792710000000().up(runner);
+    await new ReschedulingResponses1792800000000().up(runner);
     await runner.release();
     schedules = new SchedulesService(source);
     service = new AppointmentsService(source, schedules);
@@ -1066,6 +1068,8 @@ postgres('Appointment booking against PostgreSQL', () => {
       expect(Object.keys(page.data[0]).sort()).toEqual(
         [
           'idProposal',
+          'respondedAt',
+          'resultingAppointmentId',
           'originalDate',
           'originalStartTime',
           'originalEndTime',
@@ -1076,6 +1080,256 @@ postgres('Appointment booking against PostgreSQL', () => {
           'timeZone',
         ].sort(),
       );
+    });
+  });
+  describe('Patient response to rescheduling', () => {
+    async function fixture() {
+      const booked = await service.create(dto(), patient.idUser);
+      await service.cancelAsDoctor(booked.idAppointment, doctor.user.idUser, 'Urgencia');
+      const target = await source
+        .getRepository(Schedule)
+        .save({ doctor, specialty, date: '2099-11-03', startTime: '11:00', endTime: '12:00' });
+      const proposal = await service.proposeRescheduling(booked.idAppointment, doctor.user.idUser, {
+        idSchedule: target.idSchedule,
+        expectedVersion: target.version,
+      });
+      return { booked, target, proposal };
+    }
+    it('accepts atomically, books the proposed time and preserves original cancellation and response audit', async () => {
+      const { booked, target, proposal } = await fixture();
+      const result = await service.respondRescheduling(
+        proposal.idProposal,
+        patient.idUser,
+        'ACCEPTED',
+      );
+      expect(result).toMatchObject({ status: 'ACCEPTED', originalDate: date, date: target.date });
+      expect(result.respondedAt).toBeInstanceOf(Date);
+      expect(result.resultingAppointmentId).not.toBe(booked.idAppointment);
+      const stored = await source
+        .getRepository(ReschedulingProposal)
+        .findOneByOrFail({ idProposal: proposal.idProposal });
+      expect(stored).toMatchObject({ respondedBy: patient.idUser, updatedBy: patient.idUser });
+      const original = await source
+        .getRepository(Appointment)
+        .findOneByOrFail({ idAppointment: booked.idAppointment });
+      expect(original).toMatchObject({
+        status: 'CANCELLED',
+        date,
+        startTime: '09:00:00',
+        cancelledBy: doctor.user.idUser,
+        cancellationReason: 'Urgencia',
+      });
+      const replacement = await source.getRepository(Appointment).findOneOrFail({
+        where: { idAppointment: result.resultingAppointmentId! },
+        relations: { patient: true, doctor: true, schedule: true, specialty: true },
+      });
+      expect(replacement).toMatchObject({
+        status: 'RESERVED',
+        date: target.date,
+        startTime: '11:00:00',
+        endTime: '12:00:00',
+        patient: { idUser: patient.idUser },
+        doctor: { idDoctor: doctor.idDoctor },
+        schedule: { idSchedule: target.idSchedule },
+        specialty: { idSpecialty: specialty.idSpecialty },
+      });
+      expect(
+        (
+          await schedules.availability({
+            page: 1,
+            limit: 10,
+            idDoctor: doctor.idDoctor,
+            date: target.date,
+          })
+        ).meta.total,
+      ).toBe(0);
+      expect(
+        (
+          await service.doctorProposals(
+            booked.idAppointment,
+            doctor.user.idUser,
+            new PaginationQueryDto(),
+          )
+        ).data[0],
+      ).toMatchObject({
+        status: 'ACCEPTED',
+        resultingAppointmentId: result.resultingAppointmentId,
+      });
+      expect(
+        (
+          await service.mine(
+            patient.idUser,
+            Object.assign(new AppointmentsQueryDto(), { period: 'all' }),
+          )
+        ).data,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ idAppointment: replacement.idAppointment, date: target.date }),
+        ]),
+      );
+      await expect(
+        service.proposeRescheduling(booked.idAppointment, doctor.user.idUser, {
+          idSchedule: schedule.idSchedule,
+          expectedVersion: schedule.version,
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+    it('rejects without booking and allows a later proposal while retaining rejected history', async () => {
+      const { booked, target, proposal } = await fixture();
+      expect(
+        await service.respondRescheduling(proposal.idProposal, patient.idUser, 'REJECTED'),
+      ).toMatchObject({ status: 'REJECTED', resultingAppointmentId: null });
+      expect(await source.getRepository(Appointment).count()).toBe(1);
+      expect(
+        (
+          await schedules.availability({
+            page: 1,
+            limit: 10,
+            idDoctor: doctor.idDoctor,
+            date: target.date,
+          })
+        ).meta.total,
+      ).toBe(1);
+      await expect(
+        service.proposeRescheduling(booked.idAppointment, doctor.user.idUser, {
+          idSchedule: target.idSchedule,
+          expectedVersion: target.version,
+        }),
+      ).resolves.toMatchObject({ status: 'PENDING' });
+    });
+    it.each(['ACCEPTED', 'REJECTED'] as const)(
+      'rejects another patient response: %s',
+      async (status) => {
+        const { proposal } = await fixture();
+        await expect(
+          service.respondRescheduling(proposal.idProposal, other.idUser, status),
+        ).rejects.toThrow('Propuesta propia no encontrada');
+        expect(
+          await source
+            .getRepository(ReschedulingProposal)
+            .findOneByOrFail({ idProposal: proposal.idProposal }),
+        ).toMatchObject({ status: 'PENDING', respondedAt: null });
+      },
+    );
+    it.each([
+      'occupied',
+      'inactive',
+      'past',
+      'edited',
+      'doctor-inactive',
+      'specialty-inactive',
+      'deleted',
+    ])('keeps proposal pending and rolls back acceptance when target is %s', async (invalid) => {
+      const { target, proposal } = await fixture();
+      if (invalid === 'occupied')
+        await service.create(
+          { idSchedule: target.idSchedule, expectedVersion: target.version },
+          other.idUser,
+        );
+      if (invalid === 'inactive')
+        await source.getRepository(Schedule).update(target.idSchedule, { isActive: false });
+      if (invalid === 'past')
+        await source.getRepository(Schedule).update(target.idSchedule, { date: '2000-01-01' });
+      if (invalid === 'edited')
+        await source
+          .getRepository(Schedule)
+          .update(target.idSchedule, { startTime: '13:00', endTime: '14:00' });
+      if (invalid === 'doctor-inactive')
+        await source.getRepository(Doctor).update(doctor.idDoctor, { isActive: false });
+      if (invalid === 'specialty-inactive')
+        await source.getRepository(Specialty).update(specialty.idSpecialty, { isActive: false });
+      if (invalid === 'deleted') await source.getRepository(Schedule).softDelete(target.idSchedule);
+      const count = await source.getRepository(Appointment).count();
+      await expect(
+        service.respondRescheduling(proposal.idProposal, patient.idUser, 'ACCEPTED'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(await source.getRepository(Appointment).count()).toBe(count);
+      expect(
+        await source
+          .getRepository(ReschedulingProposal)
+          .findOneByOrFail({ idProposal: proposal.idProposal }),
+      ).toMatchObject({ status: 'PENDING', respondedAt: null, respondedBy: null });
+      await expect(
+        service.respondRescheduling(proposal.idProposal, patient.idUser, 'REJECTED'),
+      ).resolves.toMatchObject({ status: 'REJECTED' });
+    });
+    it.each(['ACCEPTED', 'REJECTED'] as const)(
+      'does not overwrite a response or its timestamp after %s',
+      async (status) => {
+        const { proposal } = await fixture();
+        const result = await service.respondRescheduling(
+          proposal.idProposal,
+          patient.idUser,
+          status,
+        );
+        const count = await source.getRepository(Appointment).count();
+        for (const next of ['ACCEPTED', 'REJECTED'] as const)
+          await expect(
+            service.respondRescheduling(proposal.idProposal, patient.idUser, next),
+          ).rejects.toBeInstanceOf(ConflictException);
+        expect(await source.getRepository(Appointment).count()).toBe(count);
+        expect(
+          (
+            await source
+              .getRepository(ReschedulingProposal)
+              .findOneByOrFail({ idProposal: proposal.idProposal })
+          ).respondedAt,
+        ).toEqual(result.respondedAt);
+      },
+    );
+    it('serializes concurrent accept/reject and commits only one decision', async () => {
+      const { proposal } = await fixture();
+      const responses = await Promise.allSettled(
+        ['ACCEPTED', 'REJECTED', 'ACCEPTED', 'REJECTED'].map((status) =>
+          service.respondRescheduling(
+            proposal.idProposal,
+            patient.idUser,
+            status as 'ACCEPTED' | 'REJECTED',
+          ),
+        ),
+      );
+      expect(responses.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      const stored = await source
+        .getRepository(ReschedulingProposal)
+        .findOneByOrFail({ idProposal: proposal.idProposal });
+      expect(await source.getRepository(Appointment).count()).toBe(
+        stored.status === ProposalStatus.ACCEPTED ? 2 : 1,
+      );
+    });
+    it('serializes acceptance against a competing ordinary booking', async () => {
+      const { target, proposal } = await fixture();
+      const responses = await Promise.allSettled([
+        service.respondRescheduling(proposal.idProposal, patient.idUser, 'ACCEPTED'),
+        service.create(
+          { idSchedule: target.idSchedule, expectedVersion: target.version },
+          other.idUser,
+        ),
+      ]);
+      expect(responses.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(await source.getRepository(Appointment).count()).toBe(2);
+      const stored = await source
+        .getRepository(ReschedulingProposal)
+        .findOneByOrFail({ idProposal: proposal.idProposal });
+      expect(stored.status).toBe(responses[0].status === 'fulfilled' ? 'ACCEPTED' : 'PENDING');
+    });
+    it('isolates doctor proposal history from other profiles', async () => {
+      const { booked } = await fixture();
+      await expect(
+        service.doctorProposals(booked.idAppointment, other.idUser, new PaginationQueryDto()),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      const role = await source.getRepository(Role).findOneByOrFail({ name: 'DOCTOR' });
+      const user = await source.getRepository(User).save({
+        name: 'Otra',
+        lastname: 'Doctora',
+        email: 'response-doctor@example.test',
+        ci: '888',
+        password: 'unused',
+        roles: [role],
+      });
+      await source.getRepository(Doctor).save({ user, specialties: [specialty] });
+      await expect(
+        service.doctorProposals(booked.idAppointment, user.idUser, new PaginationQueryDto()),
+      ).rejects.toThrow('Cita propia no encontrada');
     });
   });
 });

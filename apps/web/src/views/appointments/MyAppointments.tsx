@@ -165,6 +165,11 @@ export default function MyAppointments() {
                                   <PatientProposals
                                     key={`${idUser}/${appointment.idAppointment}`}
                                     idAppointment={appointment.idAppointment}
+                                    canRespond={hasPermission('appointment.respond-rescheduling')}
+                                    onResult={(success, message) => {
+                                      setFeedback({ success, message, idUser });
+                                      setRefresh((value) => value + 1);
+                                    }}
                                   />
                                   <Typography variant='subtitle2'>Motivo de cancelación</Typography>
                                   <Typography variant='body2' sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>

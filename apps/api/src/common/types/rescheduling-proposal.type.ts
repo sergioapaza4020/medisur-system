@@ -9,5 +9,7 @@ export interface PatientReschedulingProposal {
   startTime: string;
   endTime: string;
   status: ProposalStatus;
+  respondedAt: Date | null;
+  resultingAppointmentId: number | null;
   timeZone: 'America/La_Paz';
 }
