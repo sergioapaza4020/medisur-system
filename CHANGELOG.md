@@ -1,3 +1,20 @@
+## [1.2.0](https://github.com/sergioapaza4020/medisur-system/compare/v1.1.0...v1.2.0) (2026-10-19)
+
+### Features
+
+* **account:** implement self-service account settings ([b649e15](https://github.com/sergioapaza4020/medisur-system/commit/b649e15a6655c12bfe9b03e1e21281c28b9f1582))
+* **appointments:** implement administrative appointment booking ([93939ac](https://github.com/sergioapaza4020/medisur-system/commit/93939ac9d6e5208d61fc56b00f36c3f228dd59a6))
+* **appointments:** implement appointment rescheduling proposals ([17889da](https://github.com/sergioapaza4020/medisur-system/commit/17889da5ae386a9f48e635e25462e57b42b121ae))
+* **appointments:** implement doctor appointment agenda ([b26cc83](https://github.com/sergioapaza4020/medisur-system/commit/b26cc836264e9f14c9321db59860ec135c6e0c09))
+* **appointments:** implement doctor appointment cancellation ([8d9bb27](https://github.com/sergioapaza4020/medisur-system/commit/8d9bb27d447784ce1dbe8a7ade9cc24015fab49d))
+* **appointments:** implement patient appointment booking ([cbf6122](https://github.com/sergioapaza4020/medisur-system/commit/cbf61226ef975f9b988d76ca88310f7cb89161fb))
+* **appointments:** implement patient appointment cancellation ([725c8d6](https://github.com/sergioapaza4020/medisur-system/commit/725c8d6822a79f31bafc1f48d7946423f00b76c3))
+* **appointments:** implement patient appointment history ([6ab808d](https://github.com/sergioapaza4020/medisur-system/commit/6ab808d5450333ca7fbe94703392280d45a84fac))
+* **availability:** implement medical availability query ([ad4241a](https://github.com/sergioapaza4020/medisur-system/commit/ad4241a381da7ee844688eacac98770b1b84fcdb))
+* **schedules:** implement doctor availability registration ([ee01a14](https://github.com/sergioapaza4020/medisur-system/commit/ee01a144ede4565fce8e8f272b6c64f3cb509f8e))
+* **schedules:** implement schedule update flow ([775e315](https://github.com/sergioapaza4020/medisur-system/commit/775e3153e445a6c8267c74e3b8c4a88db943130d))
+* **storage:** configure reusable Neon Storage integration ([0489c25](https://github.com/sergioapaza4020/medisur-system/commit/0489c2530e0604772982b828b1016144dfad2cfb))
+
 ## [1.1.0](https://github.com/sergioapaza4020/medisur-system/compare/v1.0.0...v1.1.0) (2026-10-16)
 
 ### Features
