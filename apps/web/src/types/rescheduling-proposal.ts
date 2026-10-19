@@ -10,6 +10,8 @@ export interface ReschedulingProposal {
   startTime: string;
   endTime: string;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  respondedAt: string | null;
+  resultingAppointmentId: number | null;
   timeZone: 'America/La_Paz';
 }
 export type ProposalsPage = PaginatedResponse<ReschedulingProposal>;

@@ -26,6 +26,8 @@ describe('Appointment creation HTTP boundary', () => {
   };
   const service = {
     create: jest.fn(),
+    respondRescheduling: jest.fn(),
+    doctorProposals: jest.fn(),
     proposeRescheduling: jest.fn(),
     reschedulingAvailability: jest.fn(),
     patientProposals: jest.fn(),
@@ -482,6 +484,73 @@ describe('Appointment creation HTTP boundary', () => {
     );
     await request(server)
       .get('/appointments/9/rescheduling-proposals?page=0')
+      .auth(token, { type: 'bearer' })
+      .expect(400);
+  });
+  it('requires authentication and a distinct permission to respond', async () => {
+    await request(server)
+      .patch('/appointments/rescheduling-proposals/3/response')
+      .send({ status: 'ACCEPTED' })
+      .expect(401);
+    session.permissions = ['appointment.get-mine', 'appointment.propose-rescheduling'];
+    await request(server)
+      .patch('/appointments/rescheduling-proposals/3/response')
+      .auth(token, { type: 'bearer' })
+      .send({ status: 'ACCEPTED' })
+      .expect(403);
+    expect(service.respondRescheduling).not.toHaveBeenCalled();
+  });
+  it.each([{}, { status: 'PENDING' }, { status: 'accepted' }, { status: null }, { status: 1 }])(
+    'validates proposal response %j',
+    async (body) => {
+      session.permissions = ['appointment.respond-rescheduling'];
+      await request(server)
+        .patch('/appointments/rescheduling-proposals/3/response')
+        .auth(token, { type: 'bearer' })
+        .send(body)
+        .expect(400);
+      expect(service.respondRescheduling).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['ACCEPTED', 'REJECTED'])(
+    'uses authenticated actor and whitelisted decision %s',
+    async (status) => {
+      session.permissions = ['appointment.respond-rescheduling'];
+      service.respondRescheduling.mockResolvedValue({ idProposal: 3, status });
+      await request(server)
+        .patch('/appointments/rescheduling-proposals/3/response')
+        .auth(token, { type: 'bearer' })
+        .send({ status, idPatient: 99, idSchedule: 88, respondedBy: 99, date: '2000-01-01' })
+        .expect(200);
+      expect(service.respondRescheduling).toHaveBeenCalledWith(3, 7, status);
+      await request(server)
+        .patch('/appointments/rescheduling-proposals/invalid/response')
+        .auth(token, { type: 'bearer' })
+        .send({ status })
+        .expect(400);
+    },
+  );
+  it('requires agenda permission and validates doctor history pagination', async () => {
+    await request(server)
+      .get('/appointments/9/rescheduling-proposals/doctor')
+      .auth(token, { type: 'bearer' })
+      .expect(403);
+    session.permissions = ['appointment.get-agenda'];
+    service.doctorProposals.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
+    await request(server)
+      .get('/appointments/9/rescheduling-proposals/doctor?idDoctor=99')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.doctorProposals).toHaveBeenCalledWith(
+      9,
+      7,
+      expect.objectContaining({ page: 1, limit: 10 }),
+    );
+    await request(server)
+      .get('/appointments/9/rescheduling-proposals/doctor?limit=101')
       .auth(token, { type: 'bearer' })
       .expect(400);
   });
