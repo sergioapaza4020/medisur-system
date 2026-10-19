@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { Doctor } from 'src/entities/doctors/doctors.entity';
+import { AppointmentStatus } from 'src/entities/appointments/appointment.entity';
 import { Schedule } from 'src/entities/schedules/schedule.entity';
 import { Specialty } from 'src/entities/specialties/specialties.entity';
 import { CreateScheduleDto } from 'src/dtos/schedules/create-schedule.dto';
@@ -96,7 +97,8 @@ export class SchedulesService {
         { timeZone: 'America/La_Paz' },
       )
       .andWhere(
-        'NOT EXISTS (SELECT 1 FROM appointments occupied WHERE occupied.id_schedule = schedule.id_schedule)',
+        'NOT EXISTS (SELECT 1 FROM appointments occupied WHERE occupied.id_schedule = schedule.id_schedule AND occupied.status <> :cancelledStatus)',
+        { cancelledStatus: AppointmentStatus.CANCELLED },
       )
       .orderBy('schedule.date', 'ASC')
       .addOrderBy('schedule.startTime', 'ASC')
@@ -211,8 +213,8 @@ export class SchedulesService {
 
   private async assertAppointmentsAllowChange(manager: EntityManager, idSchedule: number) {
     const rows: { occupied: boolean }[] = await manager.query(
-      'SELECT EXISTS (SELECT 1 FROM appointments WHERE id_schedule = $1) AS occupied',
-      [idSchedule],
+      'SELECT EXISTS (SELECT 1 FROM appointments WHERE id_schedule = $1 AND status <> $2) AS occupied',
+      [idSchedule, AppointmentStatus.CANCELLED],
     );
     if (rows[0]?.occupied !== false)
       throw new ConflictException('No se puede modificar un horario con una cita reservada');

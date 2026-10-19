@@ -18,7 +18,7 @@ export class Appointment extends BaseEntity {
 
   @ManyToOne(() => Schedule, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'id_schedule' })
-  @Index('UQ_appointments_schedule', { unique: true })
+  @Index('UQ_appointments_schedule', { unique: true, where: "status <> 'CANCELLED'" })
   schedule: Schedule;
 
   @ManyToOne(() => User, { nullable: false, onDelete: 'RESTRICT' })
@@ -41,6 +41,12 @@ export class Appointment extends BaseEntity {
 
   @Column({ name: 'end_time', type: 'time' })
   endTime: string;
+
+  @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
+  cancelledAt: Date | null;
+
+  @Column({ name: 'cancelled_by', type: 'integer', nullable: true })
+  cancelledBy: number | null;
 
   @Column({ type: 'varchar', default: AppointmentStatus.RESERVED })
   status: AppointmentStatus;

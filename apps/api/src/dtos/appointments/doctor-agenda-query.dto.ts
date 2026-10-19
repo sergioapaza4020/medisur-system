@@ -1,5 +1,5 @@
 import { PickType } from '@nestjs/swagger';
-import { IsEnum, IsOptional } from 'class-validator';
+import { IsEnum, IsIn, IsOptional } from 'class-validator';
 import { AvailabilityQueryDto } from '../schedules/availability-query.dto';
 import { AppointmentStatus } from 'src/entities/appointments/appointment.entity';
 
@@ -11,6 +11,10 @@ export class DoctorAgendaQueryDto extends PickType(AvailabilityQueryDto, [
   'page',
   'limit',
 ] as const) {
+  @IsOptional()
+  @IsIn(['list', 'calendar'])
+  mode?: 'list' | 'calendar';
+
   @IsOptional()
   @IsEnum(AppointmentStatus)
   status?: AppointmentStatus;

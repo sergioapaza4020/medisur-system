@@ -1,213 +1,256 @@
 import type { ComponentProps } from 'react';
 import type * as ReactModule from 'react';
 
-import { renderToStaticMarkup } from 'react-dom/server';
 import type * as MuiModule from '@mui/material';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import DoctorAgenda from './DoctorAgenda';
-import type ListPagination from '@/components/pagination/ListPagination';
+import { agendaPeriod, navigateAgenda, periodDays, positionEvents } from './agendaDates';
+import type { DoctorAppointment } from '@/types/doctor-agenda';
 
 const mocks = vi.hoisted(() => ({
   index: 0,
-  idUser: 7,
   states: [] as unknown[],
   effects: [] as (() => void | (() => void))[],
-  denied: new Set<string>(),
+  wide: true,
+  allowed: true,
+  idUser: 7,
   agenda: vi.fn(),
-  submit: null as null | (() => void),
-  fields: new Map<string, ComponentProps<typeof MuiModule.TextField>>(),
-  pagination: null as null | ComponentProps<typeof ListPagination>,
-  chips: new Map<string, string>(),
   buttons: new Map<string, () => void>(),
+  fields: new Map<string, ComponentProps<typeof MuiModule.TextField>>(),
+  viewChange: null as null | ((event: unknown, value: string) => void),
+  dialog: false,
 }));
-vi.mock('react', async (original) => {
-  const actual = await original<typeof ReactModule>();
-  return {
-    ...actual,
-    useState: (initial: unknown) => {
-      const index = mocks.index++;
-      if (index >= 5) return [initial, vi.fn()];
-      if (!(index in mocks.states)) mocks.states[index] = initial;
-      return [
-        mocks.states[index],
-        (value: unknown) => {
-          mocks.states[index] =
-            typeof value === 'function' ? (value as (current: unknown) => unknown)(mocks.states[index]) : value;
-        },
-      ];
-    },
-    useEffect: (effect: () => void | (() => void)) => {
-      mocks.effects.push(effect);
-    },
-  };
-});
+vi.mock('react', async (original) => ({
+  ...(await original<typeof ReactModule>()),
+  useState: (initial: unknown) => {
+    const i = mocks.index++;
+    if (!(i in mocks.states)) mocks.states[i] = typeof initial === 'function' ? (initial as () => unknown)() : initial;
+    return [
+      mocks.states[i],
+      (value: unknown) => {
+        mocks.states[i] =
+          typeof value === 'function' ? (value as (current: unknown) => unknown)(mocks.states[i]) : value;
+      },
+    ];
+  },
+  useEffect: (effect: () => void | (() => void)) => {
+    mocks.effects.push(effect);
+  },
+  useMemo: (factory: () => unknown) => factory(),
+}));
 vi.mock('@mui/material', async (original) => {
   const actual = await original<typeof MuiModule>();
   return {
     ...actual,
-    Chip: (props: ComponentProps<typeof actual.Chip>) => {
-      mocks.chips.set(String(props.label), String(props.color));
-      return <actual.Chip {...props} />;
+    useMediaQuery: () => mocks.wide,
+    Button: (props: ComponentProps<typeof actual.Button>) => {
+      mocks.buttons.set(String(props['aria-label'] ?? props.children), props.onClick as () => void);
+      return <actual.Button {...props} />;
     },
     TextField: (props: ComponentProps<typeof actual.TextField>) => {
       mocks.fields.set(String(props.label), props);
       return <actual.TextField {...props} />;
     },
-    Button: (props: ComponentProps<typeof actual.Button>) => {
-      if (typeof props.children === 'string') mocks.buttons.set(props.children, props.onClick as () => void);
-      return <actual.Button {...props} />;
+    ToggleButtonGroup: (props: ComponentProps<typeof actual.ToggleButtonGroup>) => {
+      mocks.viewChange = props.onChange as typeof mocks.viewChange;
+      return <actual.ToggleButtonGroup {...props} />;
+    },
+    Dialog: (props: ComponentProps<typeof actual.Dialog>) => {
+      mocks.dialog = props.open;
+      return props.open ? <div>{props.children}</div> : null;
     },
   };
 });
 vi.mock('@/components/auth/AuthGuard', () => ({
-  useAuth: () => ({ user: { idUser: mocks.idUser }, hasPermission: (name: string) => !mocks.denied.has(name) }),
+  useAuth: () => ({ user: { idUser: mocks.idUser }, hasPermission: () => mocks.allowed }),
 }));
 vi.mock('@/services/appointments/appointmentsService', () => ({ appointmentsService: { agenda: mocks.agenda } }));
-vi.mock('@/components/pagination/ListPagination', () => ({
-  default: (props: ComponentProps<typeof ListPagination>) => {
-    mocks.pagination = props;
-    return <span>Paginación común</span>;
-  },
+vi.mock('@/views/schedules/availabilityDates', async (original) => ({
+  ...(await original<object>()),
+  boliviaToday: () => '2026-10-19',
 }));
-const query = { page: 1, limit: 10, date: '2026-11-02' };
-const appointment = {
-  idAppointment: 9,
-  patient: { name: 'Ana', lastname: 'Pérez', ci: '123456' },
-  specialty: { name: 'Cardiología' },
-  date: '2099-11-02',
+const event = {
+  idAppointment: 1,
+  date: '2026-10-19',
   startTime: '09:00:00',
-  endTime: '10:00:00',
+  endTime: '09:30:00',
+  patient: { name: 'Ana', lastname: 'Pérez', ci: 'SECRET-CI' },
+  specialty: { name: 'Cardiología' },
   status: 'RESERVED',
   timeZone: 'America/La_Paz',
 };
-const page = { data: [appointment], meta: { page: 1, limit: 10, total: 12, totalPages: 2 } };
 function render() {
   mocks.index = 0;
   mocks.effects = [];
   mocks.buttons.clear();
-  mocks.fields.clear();
   return renderToStaticMarkup(<DoctorAgenda />);
 }
-async function flush() {
+async function load() {
+  render();
+  mocks.effects[1]();
   for (let i = 0; i < 8; i++) await Promise.resolve();
+  return render();
 }
-function change(label: string, value: string) {
-  const field = mocks.fields.get(label);
-  field?.onChange?.({ target: { value } } as ReactModule.ChangeEvent<HTMLInputElement>);
+function changeView(view: string) {
+  render();
+  mocks.viewChange?.({}, view);
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.denied.clear();
+  mocks.states = [];
+  mocks.wide = true;
+  mocks.allowed = true;
   mocks.idUser = 7;
-  mocks.pagination = null;
-  mocks.states = [query, page, { query, refresh: 0, idUser: 7 }, 0, ''];
-  mocks.agenda.mockResolvedValue(page);
+  mocks.agenda.mockResolvedValue({ data: [event] });
 });
-describe('My appointments', () => {
-  it('does not query or render patient data without permission', () => {
-    mocks.denied.add('appointment.get-agenda');
+describe('Medical calendar', () => {
+  it('defaults to week on desktop, uses a single complete range query and renders time grid', async () => {
+    const html = await load();
+    expect(html).toContain('Calendario semanal por horas');
+    expect(html).toContain('Ana');
+    expect(html).not.toContain('SECRET-CI');
+    expect(mocks.agenda).toHaveBeenCalledExactlyOnceWith({
+      from: '2026-10-19',
+      to: '2026-10-25',
+      mode: 'calendar',
+      page: 1,
+      limit: 100,
+      status: undefined,
+    });
+  });
+  it('defaults to day on mobile and uses grouped list for week', async () => {
+    mocks.wide = false;
+    expect(await load()).toContain('09:00–09:30');
+    expect(mocks.agenda).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-19', to: '2026-10-19' }));
+    changeView('week');
+    const html = await load();
+    expect(html).toContain('Sin citas');
+    expect(html).not.toContain('Calendario semanal por horas');
+  });
+  it('changes views without losing the reference date and opens a month day', async () => {
+    changeView('month');
+    await load();
+    expect(mocks.agenda).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-01', to: '2026-10-31' }));
+    mocks.buttons.get('Ver día 2026-10-19, 1 citas')?.();
+    await load();
+    expect(mocks.agenda).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-19', to: '2026-10-19' }));
+  });
+  it('navigates previous, next and today keeping view', async () => {
+    await load();
+    mocks.buttons.get('Periodo siguiente')?.();
+    await load();
+    expect(mocks.agenda).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-26', to: '2026-11-01' }));
+    mocks.buttons.get('Periodo anterior')?.();
+    await load();
+    expect(mocks.states[1]).toBe('2026-10-19');
+    mocks.buttons.get('Periodo anterior')?.();
+    await load();
+    mocks.buttons.get('Hoy')?.();
+    await load();
+    expect(mocks.states[1]).toBe('2026-10-19');
+  });
+  it('opens an operational summary when a visit is selected', async () => {
+    await load();
+    const key = [...mocks.buttons.keys()].find((value) => value.includes('Ana Pérez'));
+    mocks.buttons.get(key!)?.();
+    const html = render();
+    expect(mocks.dialog).toBe(true);
+    expect(html).toContain('Resumen de cita');
+    expect(html).not.toContain('SECRET-CI');
+  });
+  it.each([
+    ['day', 'para este día'],
+    ['week', 'esta semana'],
+    ['month', 'este mes'],
+  ])('shows empty %s state', async (view, text) => {
+    mocks.agenda.mockResolvedValue({ data: [] });
+    changeView(view);
+    expect(await load()).toContain(text);
+  });
+  it('shows loading, errors and retry', async () => {
+    expect(render()).toContain('Cargando agenda médica');
+    mocks.agenda.mockRejectedValue(new Error('failure'));
+    const html = await load();
+    expect(html).toContain('Ha ocurrido un error inesperado');
+    expect(mocks.buttons.has('Reintentar')).toBe(true);
+    mocks.buttons.get('Reintentar')?.();
+    expect(render()).toContain('Cargando agenda médica');
+  });
+  it('hides previous account data and ignores obsolete responses', async () => {
+    await load();
+    mocks.idUser = 8;
+    expect(render()).not.toContain('Ana');
+    const cleanup = mocks.effects[1]();
+    if (typeof cleanup === 'function') cleanup();
+    const previous = mocks.states[6];
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(mocks.states[6]).toBe(previous);
+  });
+  it('does not fetch without permission', () => {
+    mocks.allowed = false;
     expect(render()).toContain('No tienes permiso');
-    mocks.effects.forEach((effect) => effect());
+    mocks.effects[1]();
     expect(mocks.agenda).not.toHaveBeenCalled();
   });
-  it('displays the doctor, specialty, date, time and translated state', () => {
-    const html = render();
-    for (const value of ['Ana', 'Pérez', 'Cardiología', '2099-11-02', '09:00–10:00', 'Reservada'])
-      expect(html).toContain(value);
-    expect(html).toContain('Paginación común');
-    expect(html).not.toContain('idPatient');
-  });
-  it('preserves filters through common pagination and hides stale rows while loading', async () => {
-    render();
-    mocks.pagination?.onChange({ page: 2, limit: 5 });
-    expect(render()).toContain('Cargando agenda médica');
+  it('keeps state filters in range requests and hides previous events while loading', async () => {
+    await load();
+    mocks.fields
+      .get('Estado')
+      ?.onChange?.({ target: { value: 'CANCELLED' } } as ReactModule.ChangeEvent<HTMLInputElement>);
     expect(render()).not.toContain('Ana');
-    mocks.effects[0]();
-    await flush();
-    expect(mocks.agenda).toHaveBeenCalledWith({ page: 2, limit: 5, date: '2026-11-02' });
+    await load();
+    expect(mocks.agenda).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'CANCELLED', mode: 'calendar' }));
   });
-  it.each([
-    ['Estado', 'RESERVED', 'status'],
-    ['Fecha', '2099-11-02', 'date'],
-  ])('resets pagination and applies %s filter', async (label, value, key) => {
-    mocks.states[0] = { ...query, page: 3 };
-    render();
-    change(label, value);
-    render();
-    mocks.effects[0]();
-    await flush();
-    expect(mocks.agenda).toHaveBeenCalledWith(expect.objectContaining({ page: 1, [key]: value }));
+  it('places appointments in their actual day and does not show them on a different date', async () => {
+    mocks.wide = false;
+    changeView('week');
+    mocks.agenda.mockResolvedValue({
+      data: [event, { ...event, idAppointment: 2, date: '2026-10-21', patient: { name: 'Luis', lastname: 'Vargas' } }],
+    });
+    const html = await load();
+    expect(html.indexOf('Ana')).toBeLessThan(html.indexOf('martes, 20'));
+    expect(html.indexOf('Luis')).toBeGreaterThan(html.indexOf('miércoles, 21'));
+    mocks.buttons.get('Periodo siguiente')?.();
+    expect(render()).not.toContain('Luis');
   });
-  it('switches date/range modes without combining incompatible filters and resets pagination', () => {
-    mocks.states[0] = { ...query, page: 3 };
+  it('never reopens a summary from the previous account after a new response', async () => {
+    await load();
+    mocks.buttons.get([...mocks.buttons.keys()].find((value) => value.includes('Ana Pérez'))!)?.();
     render();
-    change('Consulta', 'range');
-    expect(mocks.states[0]).toEqual({ page: 1, limit: 10, status: undefined, from: query.date, to: query.date });
-    render();
-    change('Desde', '2026-11-01');
-    render();
-    change('Hasta', '2026-11-30');
-    expect(mocks.states[0]).toMatchObject({ from: '2026-11-01', to: '2026-11-30', page: 1 });
-    render();
-    change('Consulta', 'date');
-    expect(mocks.states[0]).toEqual({ page: 1, limit: 10, date: '2026-11-01', status: undefined });
-  });
-  it('handles an empty result', async () => {
-    mocks.agenda.mockResolvedValue({ data: [], meta: { ...query, total: 0, totalPages: 0 } });
-    render();
-    mocks.effects[0]();
-    await flush();
-    expect(render()).toContain('No hay citas en tu agenda para los filtros seleccionados');
-  });
-  it('shows error feedback with retry and never retains stale patient rows', async () => {
-    mocks.agenda.mockRejectedValue({ isAxiosError: true, response: { data: { message: 'Servicio no disponible' } } });
-    render();
-    mocks.effects[0]();
-    await flush();
-    expect(render()).toContain('Servicio no disponible');
-    expect(render()).not.toContain('Ana');
-    mocks.buttons.get('Reintentar')?.();
-    expect(mocks.states[3]).toBe(1);
-  });
-  it('ignores obsolete responses after filter changes or unmount', async () => {
-    render();
-    const cleanup = mocks.effects[0]();
-    if (typeof cleanup === 'function') cleanup();
-    mocks.states[1] = null;
-    await flush();
-    expect(mocks.states[1]).toBeNull();
-  });
-  it('recovers when the requested page no longer exists', async () => {
-    mocks.states[0] = { ...query, page: 3 };
-    mocks.agenda.mockResolvedValue({ data: [], meta: { page: 3, limit: 10, total: 0, totalPages: 0 } });
-    render();
-    mocks.effects[0]();
-    await flush();
-    expect(mocks.states[0]).toMatchObject({ page: 1 });
-    expect(render()).toContain('Cargando agenda médica');
-  });
-  it('hides the previous account data immediately when the authenticated identity changes', async () => {
-    expect(render()).toContain('Ana');
+    expect(mocks.dialog).toBe(true);
     mocks.idUser = 8;
-    expect(render()).toContain('Cargando agenda médica');
+    mocks.agenda.mockResolvedValue({ data: [] });
+    await load();
+    expect(mocks.dialog).toBe(false);
     expect(render()).not.toContain('Ana');
-    mocks.agenda.mockResolvedValue({ data: [], meta: { page: 1, limit: 10, total: 0, totalPages: 0 } });
-    mocks.effects[0]();
-    await flush();
-    expect(render()).toContain('No hay citas en tu agenda para los filtros seleccionados');
-    expect(mocks.states[2]).toMatchObject({ idUser: 8 });
   });
-  it.each([
-    ['RESERVED', 'Reservada', 'primary'],
-    ['CANCELLED', 'Cancelada', 'error'],
-    ['RESCHEDULED', 'Reprogramada', 'warning'],
-  ])('distinguishes %s visually and by text without exposing clinical details', (status, label, color) => {
-    mocks.states[1] = { ...page, data: [{ ...appointment, status }] };
-    const html = render();
-    expect(html).toContain(label);
-    expect(mocks.chips.get(label)).toBe(color);
-    expect(html).toContain('123456');
-    expect(html).not.toMatch(/email|password|diagnosis|createdBy/);
+  it.each(['CANCELLED', 'RESCHEDULED'])('shows real status %s without sensitive data', async (status) => {
+    mocks.agenda.mockResolvedValue({ data: [{ ...event, status }] });
+    const html = await load();
+    expect(html).toContain(status === 'CANCELLED' ? 'Cancelada' : 'Reprogramada');
+    expect(html).not.toContain('SECRET-CI');
+  });
+});
+describe('Calendar dates', () => {
+  it('shares width only between overlapping events, restoring full width afterwards', () => {
+    const base = event as DoctorAppointment;
+    const positioned = positionEvents([
+      base,
+      { ...base, idAppointment: 2, startTime: '09:15:00', endTime: '10:00:00' },
+      { ...base, idAppointment: 3, startTime: '10:00:00', endTime: '10:30:00' },
+    ]);
+    expect(positioned.map(({ lane, columns }) => [lane, columns])).toEqual([
+      [0, 2],
+      [1, 2],
+      [0, 1],
+    ]);
+  });
+  it('handles year boundaries and leap months without browser timezone conversion', () => {
+    expect(agendaPeriod('2027-01-01', 'week')).toEqual({ from: '2026-12-28', to: '2027-01-03' });
+    expect(agendaPeriod('2028-02-15', 'month')).toMatchObject({ from: '2028-02-01', to: '2028-02-29' });
+    expect(navigateAgenda('2028-01-31', 'month', 1)).toBe('2028-02-29');
+    expect(periodDays('2026-10-19', '2026-10-25')).toHaveLength(7);
   });
 });

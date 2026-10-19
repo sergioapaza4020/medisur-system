@@ -6,10 +6,12 @@ import type * as MuiModule from '@mui/material';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import MyAppointments from './MyAppointments';
+import type CancelAppointment from './CancelAppointment';
 import type ListPagination from '@/components/pagination/ListPagination';
 
 const mocks = vi.hoisted(() => ({
   index: 0,
+  cancellation: null as null | ComponentProps<typeof CancelAppointment>,
   idUser: 7,
   states: [] as unknown[],
   effects: [] as (() => void | (() => void))[],
@@ -26,7 +28,7 @@ vi.mock('react', async (original) => {
     ...actual,
     useState: (initial: unknown) => {
       const index = mocks.index++;
-      if (index >= 5) return [initial, vi.fn()];
+      if (index >= 6) return [initial, vi.fn()];
       if (!(index in mocks.states)) mocks.states[index] = initial;
       return [
         mocks.states[index],
@@ -65,6 +67,12 @@ vi.mock('@/components/pagination/ListPagination', () => ({
     return <span>Paginación común</span>;
   },
 }));
+vi.mock('./CancelAppointment', () => ({
+  default: (props: ComponentProps<typeof CancelAppointment>) => {
+    mocks.cancellation = props;
+    return <span>Cancelar cita propia</span>;
+  },
+}));
 const query = { page: 1, limit: 10, period: 'upcoming' as const };
 const appointment = {
   idAppointment: 9,
@@ -96,7 +104,8 @@ beforeEach(() => {
   mocks.denied.clear();
   mocks.idUser = 7;
   mocks.pagination = null;
-  mocks.states = [query, page, { query, refresh: 0, idUser: 7 }, 0, ''];
+  mocks.states = [query, page, { query, refresh: 0, idUser: 7 }, 0, '', null];
+  mocks.cancellation = null;
   mocks.mine.mockResolvedValue(page);
 });
 describe('My appointments', () => {
@@ -188,4 +197,24 @@ describe('My appointments', () => {
     expect(render()).toContain('No tienes citas para los filtros seleccionados');
     expect(mocks.states[2]).toMatchObject({ idUser: 8 });
   });
+  it('does not offer cancellation without the specific permission', () => {
+    mocks.denied.add('appointment.cancel-mine');
+    expect(render()).not.toContain('Cancelar cita propia');
+    expect(mocks.cancellation).toBeNull();
+  });
+  it.each([true, false])(
+    'refreshes the common list and displays cancellation feedback (success=%s)',
+    async (success) => {
+      render();
+      expect(mocks.cancellation?.appointment).toEqual(appointment);
+      mocks.cancellation?.onResult(success, success ? 'Cita cancelada' : 'Estado incompatible');
+      expect(render()).toContain(success ? 'Cita cancelada' : 'Estado incompatible');
+      expect(render()).toContain('Cargando mis citas');
+      mocks.mine.mockResolvedValue({ ...page, data: [{ ...appointment, status: 'CANCELLED' }] });
+      mocks.effects[0]();
+      await flush();
+      expect(render()).toContain('Cancelada');
+      expect(mocks.states[0]).toBe(query);
+    },
+  );
 });
