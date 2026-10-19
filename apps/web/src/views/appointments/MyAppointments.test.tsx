@@ -109,6 +109,35 @@ beforeEach(() => {
   mocks.mine.mockResolvedValue(page);
 });
 describe('My appointments', () => {
+  it.each(['El médico no podrá atender por una emergencia.', 'Motivo extenso de cancelación. '.repeat(16)])(
+    'shows the complete cancellation reason visibly: %s',
+    (cancellationReason) => {
+      mocks.states[1] = { ...page, data: [{ ...appointment, status: 'CANCELLED', cancellationReason }] };
+      const html = render();
+      expect(html).toContain('Cancelada');
+      expect(html).toContain('Motivo de cancelación');
+      expect(html).toContain(cancellationReason.trim());
+    },
+  );
+  it.each([null, undefined, '', '   '])('handles historical cancellation reason %s', (cancellationReason) => {
+    mocks.states[1] = { ...page, data: [{ ...appointment, status: 'CANCELLED', cancellationReason }] };
+    expect(render()).toContain('No se registró un motivo de cancelación.');
+    expect(render()).toContain('Cancelada');
+  });
+  it.each(['RESERVED', 'RESCHEDULED'])('never shows a cancellation block for %s', (status) => {
+    mocks.states[1] = { ...page, data: [{ ...appointment, status, cancellationReason: 'Dato inconsistente' }] };
+    const html = render();
+    expect(html).not.toContain('Motivo de cancelación');
+    expect(html).not.toContain('Dato inconsistente');
+  });
+  it('renders reason as plain text instead of executable HTML', () => {
+    mocks.states[1] = {
+      ...page,
+      data: [{ ...appointment, status: 'CANCELLED', cancellationReason: '<script>alert(1)</script>' }],
+    };
+    expect(render()).toContain('&lt;script&gt;');
+    expect(render()).not.toContain('<script>');
+  });
   it('does not query or render patient data without permission', () => {
     mocks.denied.add('appointment.get-mine');
     expect(render()).toContain('No tienes permiso');

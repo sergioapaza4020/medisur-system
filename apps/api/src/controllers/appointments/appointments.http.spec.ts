@@ -27,6 +27,7 @@ describe('Appointment creation HTTP boundary', () => {
   const service = {
     create: jest.fn(),
     cancelMine: jest.fn(),
+    cancelAsDoctor: jest.fn(),
     agenda: jest.fn(),
     mine: jest.fn(),
     patients: jest.fn(),
@@ -324,5 +325,58 @@ describe('Appointment creation HTTP boundary', () => {
       .auth(token, { type: 'bearer' })
       .expect(400);
     expect(service.cancelMine).not.toHaveBeenCalled();
+  });
+  it('requires authentication and the doctor cancellation permission separately from reading the agenda', async () => {
+    await request(server)
+      .patch('/appointments/9/cancel-as-doctor')
+      .send({ reason: 'Urgencia' })
+      .expect(401);
+    for (const permission of [
+      'appointment.get-agenda',
+      'appointment.cancel-mine',
+      'appointment.create-for-patient',
+    ]) {
+      session.permissions = [permission];
+      await request(server)
+        .patch('/appointments/9/cancel-as-doctor')
+        .auth(token, { type: 'bearer' })
+        .send({ reason: 'Urgencia' })
+        .expect(403);
+    }
+    expect(service.cancelAsDoctor).not.toHaveBeenCalled();
+  });
+  it.each([{}, { reason: '' }, { reason: '   ' }, { reason: 9 }, { reason: 'x'.repeat(501) }])(
+    'validates the mandatory cancellation reason %j',
+    async (body) => {
+      session.permissions = ['appointment.cancel-as-doctor'];
+      await request(server)
+        .patch('/appointments/9/cancel-as-doctor')
+        .auth(token, { type: 'bearer' })
+        .send(body)
+        .expect(400);
+      expect(service.cancelAsDoctor).not.toHaveBeenCalled();
+    },
+  );
+  it('uses only authenticated actor, parsed appointment and trimmed reason', async () => {
+    session.permissions = ['appointment.cancel-as-doctor'];
+    service.cancelAsDoctor.mockResolvedValue({ idAppointment: 9, status: 'CANCELLED' });
+    await request(server)
+      .patch('/appointments/9/cancel-as-doctor')
+      .auth(token, { type: 'bearer' })
+      .send({
+        reason: '  Urgencia  ',
+        idDoctor: 99,
+        idPatient: 55,
+        cancelledBy: 99,
+        status: 'RESERVED',
+      })
+      .expect(200);
+    expect(service.cancelAsDoctor).toHaveBeenCalledWith(9, 7, 'Urgencia');
+    expect(service.cancelMine).not.toHaveBeenCalled();
+    await request(server)
+      .patch('/appointments/invalid/cancel-as-doctor')
+      .auth(token, { type: 'bearer' })
+      .send({ reason: 'Urgencia' })
+      .expect(400);
   });
 });

@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   fields: new Map<string, ComponentProps<typeof MuiModule.TextField>>(),
   viewChange: null as null | ((event: unknown, value: string) => void),
   dialog: false,
+  canCancel: true,
+  cancellation: null as null | { mode: string; onResult: (success: boolean, message: string) => void },
 }));
 vi.mock('react', async (original) => ({
   ...(await original<typeof ReactModule>()),
@@ -63,8 +65,18 @@ vi.mock('@mui/material', async (original) => {
     },
   };
 });
+vi.mock('./CancelAppointment', () => ({
+  default: (props: { mode: string; onResult: (success: boolean, message: string) => void }) => {
+    mocks.cancellation = props;
+    return <button>Cancelar cita</button>;
+  },
+}));
 vi.mock('@/components/auth/AuthGuard', () => ({
-  useAuth: () => ({ user: { idUser: mocks.idUser }, hasPermission: () => mocks.allowed }),
+  useAuth: () => ({
+    user: { idUser: mocks.idUser },
+    hasPermission: (permission: string) =>
+      permission === 'appointment.cancel-as-doctor' ? mocks.canCancel : mocks.allowed,
+  }),
 }));
 vi.mock('@/services/appointments/appointmentsService', () => ({ appointmentsService: { agenda: mocks.agenda } }));
 vi.mock('@/views/schedules/availabilityDates', async (original) => ({
@@ -103,6 +115,8 @@ beforeEach(() => {
   mocks.wide = true;
   mocks.allowed = true;
   mocks.idUser = 7;
+  mocks.canCancel = true;
+  mocks.cancellation = null;
   mocks.agenda.mockResolvedValue({ data: [event] });
 });
 describe('Medical calendar', () => {
@@ -150,6 +164,23 @@ describe('Medical calendar', () => {
     mocks.buttons.get('Hoy')?.();
     await load();
     expect(mocks.states[1]).toBe('2026-10-19');
+  });
+  it('gates cancellation separately and refreshes the current calendar with feedback', async () => {
+    await load();
+    mocks.buttons.get([...mocks.buttons.keys()].find((value) => value.includes('Ana Pérez'))!)?.();
+    mocks.canCancel = false;
+    expect(render()).not.toContain('Cancelar cita');
+    mocks.canCancel = true;
+    expect(render()).toContain('Cancelar cita');
+    expect(mocks.cancellation?.mode).toBe('doctor');
+    mocks.cancellation?.onResult(true, 'Cita cancelada correctamente');
+    const html = await load();
+    expect(html).toContain('Cita cancelada correctamente');
+    expect(mocks.states[4]).toBe(null);
+    expect(mocks.states[3]).toBe(1);
+    expect(mocks.agenda).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-19', to: '2026-10-25' }));
+    mocks.idUser = 8;
+    expect(render()).not.toContain('Cita cancelada correctamente');
   });
   it('opens an operational summary when a visit is selected', async () => {
     await load();

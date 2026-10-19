@@ -30,6 +30,7 @@ import { appointmentStatusLabels, type AppointmentStatus } from '@/types/appoint
 import type { DoctorAppointment } from '@/types/doctor-agenda';
 import { boliviaToday, displayDate, monthDates } from '@/views/schedules/availabilityDates';
 import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
+import CancelAppointment from './CancelAppointment';
 import {
   agendaPeriod,
   boliviaClock,
@@ -140,6 +141,7 @@ export default function DoctorAgenda() {
   const { from, to } = agendaPeriod(date, view);
   const key = `${idUser}/${from}/${to}/${status}/${refresh}`;
   const [response, setResponse] = useState<{ key: string; events: DoctorAppointment[]; error: string } | null>(null);
+  const [feedback, setFeedback] = useState<{ idUser: number; success: boolean; message: string } | null>(null);
   const loading = response?.key !== key;
   const events = !loading && !response?.error ? (response?.events ?? []) : [];
   const selectedEvent = events.find((event) => event.idAppointment === selected?.idAppointment);
@@ -430,6 +432,9 @@ export default function DoctorAgenda() {
               )}
             </>
           )}
+          {feedback && feedback.idUser === idUser && (
+            <Alert severity={feedback.success ? 'success' : 'error'}>{feedback.message}</Alert>
+          )}
           <Dialog
             open={Boolean(selectedEvent)}
             onClose={() => setSelected(null)}
@@ -461,6 +466,18 @@ export default function DoctorAgenda() {
               </DialogContent>
             )}
             <DialogActions>
+              {selectedEvent && hasPermission('appointment.cancel-as-doctor') && (
+                <CancelAppointment
+                  key={`${idUser}/${selectedEvent.idAppointment}`}
+                  appointment={selectedEvent}
+                  mode='doctor'
+                  onResult={(success, message) => {
+                    if (idUser) setFeedback({ idUser, success, message });
+                    setSelected(null);
+                    setRefresh((value) => value + 1);
+                  }}
+                />
+              )}
               <Button onClick={() => setSelected(null)}>Cerrar</Button>
             </DialogActions>
           </Dialog>

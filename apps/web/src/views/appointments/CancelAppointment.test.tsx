@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   states: [] as unknown[],
   buttons: new Map<string, { disabled?: boolean; onClick: () => void }>(),
   cancelMine: vi.fn(),
+  cancelAsDoctor: vi.fn(),
   inFlight: { current: false },
 }));
 vi.mock('react', async (original) => ({
@@ -28,6 +29,7 @@ vi.mock('react', async (original) => ({
   },
 }));
 vi.mock('@mui/material', () => ({
+  TextField: () => <input aria-label='Motivo de cancelación' />,
   Button: (props: { children: string; disabled?: boolean; onClick: () => void }) => {
     mocks.buttons.set(String(props.children), props);
     return <button disabled={props.disabled}>{props.children}</button>;
@@ -41,7 +43,7 @@ vi.mock('@mui/material', () => ({
   Alert: ({ children }: { children: ReactModule.ReactNode }) => <div role='alert'>{children}</div>,
 }));
 vi.mock('@/services/appointments/appointmentsService', () => ({
-  appointmentsService: { cancelMine: mocks.cancelMine },
+  appointmentsService: { cancelMine: mocks.cancelMine, cancelAsDoctor: mocks.cancelAsDoctor },
 }));
 const appointment = {
   idAppointment: 9,
@@ -124,5 +126,54 @@ describe('Patient cancellation confirmation', () => {
   });
   it.each(['CANCELLED', 'RESCHEDULED'])('does not offer cancellation for %s', (status) => {
     expect(render({ ...appointment, status: status as 'RESERVED' })).toBe('');
+  });
+});
+
+describe('Doctor cancellation confirmation', () => {
+  const doctorAppointment = {
+    idAppointment: appointment.idAppointment,
+    specialty: appointment.specialty,
+    date: appointment.date,
+    startTime: appointment.startTime,
+    endTime: appointment.endTime,
+    status: appointment.status,
+    timeZone: appointment.timeZone,
+    patient: { name: 'Luis', lastname: 'Vargas' },
+  };
+  function renderDoctor() {
+    mocks.index = 0;
+    return renderToStaticMarkup(<CancelAppointment appointment={doctorAppointment} mode='doctor' onResult={result} />);
+  }
+  it('requires a reason and explicit confirmation before calling the doctor endpoint', async () => {
+    mocks.states[0] = true;
+    const html = renderDoctor();
+    expect(html).toContain('Motivo de cancelación');
+    expect(html).toContain('Luis');
+    mocks.buttons.get('Confirmar cancelación')!.onClick();
+    expect(mocks.cancelAsDoctor).not.toHaveBeenCalled();
+    expect(renderDoctor()).toContain('Indica un motivo');
+    mocks.states[4] = '  Urgencia médica  ';
+    renderDoctor();
+    mocks.cancelAsDoctor.mockResolvedValue({ status: 'CANCELLED' });
+    mocks.buttons.get('Confirmar cancelación')!.onClick();
+    await flush();
+    expect(mocks.cancelAsDoctor).toHaveBeenCalledExactlyOnceWith(9, 'Urgencia médica');
+    expect(mocks.cancelMine).not.toHaveBeenCalled();
+    expect(result).toHaveBeenCalledWith(true, expect.stringContaining('Cita cancelada'));
+  });
+  it('preserves the reason and reports service errors without claiming success', async () => {
+    mocks.states[0] = true;
+    renderDoctor();
+    mocks.states[4] = 'Urgencia';
+    renderDoctor();
+    mocks.cancelAsDoctor.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 403, data: { message: 'Sin permiso' } },
+    });
+    mocks.buttons.get('Confirmar cancelación')!.onClick();
+    await flush();
+    expect(renderDoctor()).toContain('Sin permiso');
+    expect(mocks.states[4]).toBe('Urgencia');
+    expect(result).not.toHaveBeenCalled();
   });
 });

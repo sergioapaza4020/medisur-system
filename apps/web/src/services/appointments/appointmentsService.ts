@@ -21,6 +21,14 @@ export const appointmentsService = {
       )
     ).data.data;
   },
+  async cancelAsDoctor(idAppointment: number, reason: string) {
+    return (
+      await apiClient.patch<ApiResponse<{ idAppointment: number; status: 'CANCELLED'; cancelledAt: string }>>(
+        `/appointments/${idAppointment}/cancel-as-doctor`,
+        { reason },
+      )
+    ).data.data;
+  },
   async agenda(query: DoctorAgendaQuery): Promise<DoctorAgendaPage> {
     return (await apiClient.get<DoctorAgendaPage>('/appointments/agenda', { params: query })).data;
   },

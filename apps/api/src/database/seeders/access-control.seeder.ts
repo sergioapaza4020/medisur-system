@@ -51,9 +51,12 @@ export async function seedAccessControl(manager: EntityManager) {
               )
             : definition.name === 'DOCTOR'
               ? permissions.filter((permission) =>
-                  ['schedule.create', 'schedule.update', 'appointment.get-agenda'].includes(
-                    permission.name,
-                  ),
+                  [
+                    'schedule.create',
+                    'schedule.update',
+                    'appointment.get-agenda',
+                    'appointment.cancel-as-doctor',
+                  ].includes(permission.name),
                 )
               : [];
     const existing = await roleRepository.findOne({

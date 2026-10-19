@@ -8,6 +8,7 @@ import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.d
 import { CreateAdministrativeAppointmentDto } from 'src/dtos/appointments/create-administrative-appointment.dto';
 import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selection-query.dto';
 import { DoctorAgendaQueryDto } from 'src/dtos/appointments/doctor-agenda-query.dto';
+import { CancelDoctorAppointmentDto } from 'src/dtos/appointments/cancel-doctor-appointment.dto';
 import { AppointmentsService } from 'src/services/appointments/appointments.service';
 
 @ApiBearerAuth('access-token')
@@ -21,6 +22,16 @@ export class AppointmentsController {
   @Permissions('appointment.cancel-mine')
   cancelMine(@Param('idAppointment', ParseIntPipe) id: number, @CurrentUser() user: JwtPayload) {
     return this.service.cancelMine(id, user.idUser);
+  }
+
+  @Patch(':idAppointment/cancel-as-doctor')
+  @Permissions('appointment.cancel-as-doctor')
+  cancelAsDoctor(
+    @Param('idAppointment', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CancelDoctorAppointmentDto,
+  ) {
+    return this.service.cancelAsDoctor(id, user.idUser, dto.reason);
   }
 
   @Get('agenda')

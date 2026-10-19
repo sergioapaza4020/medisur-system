@@ -8,5 +8,6 @@ export interface PatientAppointment {
   startTime: string;
   endTime: string;
   status: AppointmentStatus;
+  cancellationReason: string | null;
   timeZone: 'America/La_Paz';
 }

@@ -15,6 +15,7 @@ import { DoctorAgendaQueryDto } from 'src/dtos/appointments/doctor-agenda-query.
 import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.dto';
 import { AvailabilityQueryDto } from 'src/dtos/schedules/availability-query.dto';
 import { AppointmentCancellation1792540000000 } from 'src/database/migrations/1792540000000-AppointmentCancellation';
+import { DoctorAppointmentCancellation1792630000000 } from 'src/database/migrations/1792630000000-DoctorAppointmentCancellation';
 import { CreateAppointments1792450000000 } from 'src/database/migrations/1792450000000-CreateAppointments';
 import { SchedulesService } from '../schedules/schedules.service';
 import { AppointmentsService } from './appointments.service';
@@ -62,6 +63,7 @@ postgres('Appointment booking against PostgreSQL', () => {
     const runner = source.createQueryRunner();
     await new CreateAppointments1792450000000().up(runner);
     await new AppointmentCancellation1792540000000().up(runner);
+    await new DoctorAppointmentCancellation1792630000000().up(runner);
     await runner.release();
     schedules = new SchedulesService(source);
     service = new AppointmentsService(source, schedules);
@@ -680,13 +682,191 @@ postgres('Appointment booking against PostgreSQL', () => {
     await runner.startTransaction();
     try {
       const migration = new AppointmentCancellation1792540000000();
+      const doctorMigration = new DoctorAppointmentCancellation1792630000000();
+      await doctorMigration.down(runner);
       await migration.down(runner);
       await migration.up(runner);
+      await doctorMigration.up(runner);
       await runner.commitTransaction();
     } finally {
       if (runner.isTransactionActive) await runner.rollbackTransaction();
       await runner.release();
     }
     expect(await source.getRepository(Appointment).count()).toBe(1);
+  });
+  describe('Doctor cancellation', () => {
+    it('enforces complete doctor cancellation traceability even for direct database writes', async () => {
+      const booked = await service.create(dto(), patient.idUser);
+      await expect(
+        source.query(
+          `UPDATE appointments SET status = 'CANCELLED', cancellation_source = 'DOCTOR'
+        WHERE id_appointment = $1`,
+          [booked.idAppointment],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      expect(
+        (
+          await source
+            .getRepository(Appointment)
+            .findOneByOrFail({ idAppointment: booked.idAppointment })
+        ).status,
+      ).toBe('RESERVED');
+    });
+    it('preserves legacy cancellation and audit when applying the new migration', async () => {
+      const booked = await service.create(dto(), patient.idUser);
+      await service.cancelMine(booked.idAppointment, patient.idUser);
+      const runner = source.createQueryRunner();
+      await runner.startTransaction();
+      try {
+        const migration = new DoctorAppointmentCancellation1792630000000();
+        await migration.down(runner);
+        await migration.up(runner);
+        await runner.commitTransaction();
+      } finally {
+        if (runner.isTransactionActive) await runner.rollbackTransaction();
+        await runner.release();
+      }
+      expect(
+        await source
+          .getRepository(Appointment)
+          .findOneByOrFail({ idAppointment: booked.idAppointment }),
+      ).toMatchObject({
+        status: 'CANCELLED',
+        cancelledBy: patient.idUser,
+        cancellationReason: null,
+        cancellationSource: null,
+      });
+    });
+
+    it('preserves history and durable notification context, releases availability and updates patient view', async () => {
+      const booked = await service.create(dto(), patient.idUser);
+      const result = await service.cancelAsDoctor(
+        booked.idAppointment,
+        doctor.user.idUser,
+        '  Urgencia médica  ',
+      );
+      expect(result.status).toBe('CANCELLED');
+      const stored = await source.getRepository(Appointment).findOneOrFail({
+        where: { idAppointment: booked.idAppointment },
+        relations: { patient: true, doctor: true },
+      });
+      expect(stored).toMatchObject({
+        status: 'CANCELLED',
+        cancellationReason: 'Urgencia médica',
+        cancellationSource: 'DOCTOR',
+        cancelledBy: doctor.user.idUser,
+        updatedBy: doctor.user.idUser,
+        patient: { idUser: patient.idUser },
+        doctor: { idDoctor: doctor.idDoctor },
+        date,
+        startTime: '09:00:00',
+        endTime: '10:00:00',
+        deletedAt: null,
+      });
+      expect(stored.cancelledAt).toBeInstanceOf(Date);
+      expect((await availability()).meta.total).toBe(1);
+      expect(
+        (
+          await service.mine(
+            patient.idUser,
+            Object.assign(new AppointmentsQueryDto(), { period: 'all' }),
+          )
+        ).data[0],
+      ).toMatchObject({ status: 'CANCELLED', cancellationReason: 'Urgencia médica' });
+      const otherAppointments = await service.mine(
+        other.idUser,
+        Object.assign(new AppointmentsQueryDto(), { period: 'all' }),
+      );
+      expect(otherAppointments.data).toEqual([]);
+      await expect(service.create(dto(), other.idUser)).resolves.toMatchObject({
+        status: 'RESERVED',
+      });
+    });
+    it('rejects a different active doctor without modifying the appointment', async () => {
+      const booked = await service.create(dto(), patient.idUser);
+      const otherDoctorUser = await source.getRepository(User).save({
+        email: 'doctor2@example.test',
+        password: 'unused',
+        name: 'Other',
+        lastname: 'Doctor',
+        ci: '44',
+        roles: doctor.user.roles,
+      });
+      await source.getRepository(Doctor).save({ user: otherDoctorUser, specialties: [specialty] });
+      await expect(
+        service.cancelAsDoctor(booked.idAppointment, otherDoctorUser.idUser, 'Urgencia'),
+      ).rejects.toThrow('Cita propia no encontrada');
+      expect(
+        await source
+          .getRepository(Appointment)
+          .findOneByOrFail({ idAppointment: booked.idAppointment }),
+      ).toMatchObject({ status: 'RESERVED', cancelledAt: null });
+    });
+    it('rejects accounts without an active doctor profile', async () => {
+      const booked = await service.create(dto(), patient.idUser);
+      await expect(
+        service.cancelAsDoctor(booked.idAppointment, patient.idUser, 'Urgencia'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await source.getRepository(Doctor).update(doctor.idDoctor, { isActive: false });
+      await expect(
+        service.cancelAsDoctor(booked.idAppointment, doctor.user.idUser, 'Urgencia'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+    it.each(['CANCELLED', 'RESCHEDULED', 'COMPLETED'])(
+      'rejects incompatible state %s',
+      async (status) => {
+        const booked = await service.create(dto(), patient.idUser);
+        await source
+          .getRepository(Appointment)
+          .update(booked.idAppointment, { status: status as AppointmentStatus });
+        await expect(
+          service.cancelAsDoctor(booked.idAppointment, doctor.user.idUser, 'Urgencia'),
+        ).rejects.toBeInstanceOf(ConflictException);
+      },
+    );
+    it.each(['', '   ', 'x'.repeat(501)])(
+      'requires a valid reason without changing state',
+      async (reason) => {
+        const booked = await service.create(dto(), patient.idUser);
+        expect(() =>
+          service.cancelAsDoctor(booked.idAppointment, doctor.user.idUser, reason),
+        ).toThrow('motivo');
+        expect(
+          (
+            await source
+              .getRepository(Appointment)
+              .findOneByOrFail({ idAppointment: booked.idAppointment })
+          ).status,
+        ).toBe('RESERVED');
+      },
+    );
+    it('rejects elapsed appointments', async () => {
+      const booked = await service.create(dto(), patient.idUser);
+      await source.getRepository(Appointment).update(booked.idAppointment, { date: '2000-01-01' });
+      await expect(
+        service.cancelAsDoctor(booked.idAppointment, doctor.user.idUser, 'Urgencia'),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+    it('serializes concurrent patient and doctor cancellation and preserves the winning audit', async () => {
+      const booked = await service.create(dto(), patient.idUser);
+      const results = await Promise.allSettled([
+        service.cancelAsDoctor(booked.idAppointment, doctor.user.idUser, 'Urgencia'),
+        service.cancelMine(booked.idAppointment, patient.idUser),
+        service.cancelAsDoctor(booked.idAppointment, doctor.user.idUser, 'Otro motivo'),
+      ]);
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(results.filter((result) => result.status === 'rejected')).toHaveLength(2);
+      const stored = await source
+        .getRepository(Appointment)
+        .findOneByOrFail({ idAppointment: booked.idAppointment });
+      expect(stored.cancelledBy).toBe(
+        stored.cancellationSource === 'DOCTOR' ? doctor.user.idUser : patient.idUser,
+      );
+      expect(
+        stored.cancellationSource === 'DOCTOR'
+          ? ['Urgencia', 'Otro motivo'].includes(stored.cancellationReason!)
+          : stored.cancellationReason === null,
+      ).toBe(true);
+    });
   });
 });
