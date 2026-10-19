@@ -19,6 +19,21 @@ export type Appointment = Omit<AvailabilityBlock, 'version'> & {
 };
 
 export const appointmentsService = {
+  async respondRescheduling(idProposal: number, status: 'ACCEPTED' | 'REJECTED'): Promise<ReschedulingProposal> {
+    return (
+      await apiClient.patch<ApiResponse<ReschedulingProposal>>(
+        `/appointments/rescheduling-proposals/${idProposal}/response`,
+        { status },
+      )
+    ).data.data;
+  },
+  async doctorProposals(idAppointment: number, query: PaginationQuery): Promise<ProposalsPage> {
+    return (
+      await apiClient.get<ProposalsPage>(`/appointments/${idAppointment}/rescheduling-proposals/doctor`, {
+        params: query,
+      })
+    ).data;
+  },
   async proposeRescheduling(idAppointment: number, block: AvailabilityBlock): Promise<ReschedulingProposal> {
     return (
       await apiClient.post<ApiResponse<ReschedulingProposal>>(`/appointments/${idAppointment}/rescheduling-proposals`, {

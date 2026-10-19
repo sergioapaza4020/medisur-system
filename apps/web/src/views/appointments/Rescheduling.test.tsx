@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   available: vi.fn(),
   propose: vi.fn(),
   proposals: vi.fn(),
+  doctorProposals: vi.fn(),
+  respond: vi.fn(),
+  canRespond: false,
   result: vi.fn(),
   flight: { current: false },
 }));
@@ -86,6 +89,8 @@ vi.mock('@/services/appointments/appointmentsService', () => ({
     reschedulingAvailability: mocks.available,
     proposeRescheduling: mocks.propose,
     patientProposals: mocks.proposals,
+    doctorProposals: mocks.doctorProposals,
+    respondRescheduling: mocks.respond,
   },
 }));
 const appointment = {
@@ -109,13 +114,13 @@ const block = {
   timeZone: 'America/La_Paz' as const,
 };
 const meta = { page: 1, limit: 10, total: 1, totalPages: 1 };
-function render(patient = false) {
+function render(patient = false, doctor = false) {
   mocks.index = 0;
   mocks.effects = [];
   mocks.buttons.clear();
   return renderToStaticMarkup(
     patient ? (
-      <PatientProposals idAppointment={9} />
+      <PatientProposals idAppointment={9} mode={doctor ? 'doctor' : 'patient'} canRespond={mocks.canRespond} />
     ) : (
       <ProposeRescheduling appointment={appointment} onResult={mocks.result} />
     ),
@@ -124,21 +129,31 @@ function render(patient = false) {
 async function flush() {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 }
-async function load(patient = false) {
-  render(patient);
+async function load(patient = false, doctor = false) {
+  render(patient, doctor);
   mocks.effects[0]();
   await flush();
-  return render(patient);
+  return render(patient, doctor);
 }
-async function open(patient = false) {
-  render(patient);
+async function open(patient = false, doctor = false) {
+  render(patient, doctor);
   mocks.buttons.get(patient ? 'Ver propuestas' : 'Proponer reprogramación')!.onClick();
-  return load(patient);
+  return load(patient, doctor);
 }
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.states = [];
   mocks.flight.current = false;
+  mocks.canRespond = false;
+  mocks.respond.mockResolvedValue({
+    idProposal: 1,
+    status: 'ACCEPTED',
+    resultingAppointmentId: 20,
+    date: block.date,
+    startTime: block.startTime,
+    endTime: block.endTime,
+  });
+  mocks.doctorProposals.mockResolvedValue({ data: [], meta: { ...meta, total: 0, totalPages: 0 } });
   mocks.slots = null;
   mocks.pagination = null;
   mocks.available.mockResolvedValue({ data: [block], meta });
@@ -289,5 +304,95 @@ describe('Patient proposal consultation', () => {
     resolve({ data: [], meta });
     await flush();
     expect(mocks.states[3]).toBe(null);
+  });
+});
+
+describe('Patient response controls', () => {
+  it('requires permission and explicit confirmation before accepting', async () => {
+    expect(await open(true)).not.toContain('Aceptar propuesta');
+    mocks.canRespond = true;
+    render(true);
+    mocks.buttons.get('Aceptar propuesta')!.onClick();
+    expect(render(true)).toContain('¿Confirmas la aceptación?');
+    expect(mocks.respond).not.toHaveBeenCalled();
+    mocks.buttons.get('Confirmar respuesta')!.onClick();
+    await flush();
+    expect(mocks.respond).toHaveBeenCalledExactlyOnceWith(1, 'ACCEPTED');
+    expect(render(true)).toContain('Reprogramación aceptada');
+    expect(render(true)).toContain('#20');
+  });
+  it('confirms rejection without creating a booking and reports clear success', async () => {
+    mocks.canRespond = true;
+    await open(true);
+    mocks.respond.mockResolvedValue({ status: 'REJECTED' });
+    mocks.buttons.get('Rechazar propuesta')!.onClick();
+    expect(render(true)).toContain('¿Confirmas el rechazo');
+    mocks.buttons.get('Confirmar respuesta')!.onClick();
+    await flush();
+    expect(mocks.respond).toHaveBeenCalledExactlyOnceWith(1, 'REJECTED');
+    expect(render(true)).toContain('Propuesta rechazada');
+    expect(mocks.propose).not.toHaveBeenCalled();
+  });
+  it('prevents double response and disables controls while saving', async () => {
+    mocks.canRespond = true;
+    await open(true);
+    let resolve!: (value: unknown) => void;
+    mocks.respond.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    mocks.buttons.get('Aceptar propuesta')!.onClick();
+    render(true);
+    mocks.buttons.get('Confirmar respuesta')!.onClick();
+    mocks.buttons.get('Confirmar respuesta')!.onClick();
+    expect(mocks.respond).toHaveBeenCalledTimes(1);
+    expect(render(true)).toContain('Guardando respuesta');
+    expect(mocks.buttons.get('Cerrar')!.disabled).toBe(true);
+    expect(mocks.pagination!.disabled).toBe(true);
+    resolve({ status: 'REJECTED' });
+    await flush();
+  });
+  it('shows occupied slot errors and reloads the current proposal state', async () => {
+    mocks.canRespond = true;
+    await open(true);
+    mocks.respond.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 409, data: { message: 'El horario ya está reservado' } },
+    });
+    mocks.buttons.get('Aceptar propuesta')!.onClick();
+    render(true);
+    mocks.buttons.get('Confirmar respuesta')!.onClick();
+    await flush();
+    expect(render(true)).toContain('El horario ya está reservado');
+    expect(render(true)).not.toContain('Reprogramación aceptada');
+    await load(true);
+    expect(mocks.proposals).toHaveBeenCalledTimes(2);
+  });
+  it('keeps doctor history read-only and uses its scoped endpoint', async () => {
+    mocks.canRespond = true;
+    mocks.doctorProposals.mockResolvedValue({
+      data: [
+        {
+          idProposal: 1,
+          status: 'ACCEPTED',
+          resultingAppointmentId: 20,
+          originalDate: '2099-11-02',
+          originalStartTime: '09:00',
+          originalEndTime: '10:00',
+          date: block.date,
+          startTime: block.startTime,
+          endTime: block.endTime,
+        },
+      ],
+      meta,
+    });
+    const html = await open(true, true);
+    expect(html).toContain('Aceptada');
+    expect(html).toContain('Cita de reemplazo: #20');
+    expect(html).not.toContain('Aceptar propuesta');
+    expect(html).not.toContain('Rechazar propuesta');
+    expect(mocks.doctorProposals).toHaveBeenCalledWith(9, { page: 1, limit: 10 });
+    expect(mocks.proposals).not.toHaveBeenCalled();
   });
 });

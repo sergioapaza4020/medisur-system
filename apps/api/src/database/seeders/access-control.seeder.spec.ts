@@ -147,6 +147,7 @@ describe('MEDISUR access seed', () => {
       'appointment.create',
       'appointment.get-mine',
       'appointment.cancel-mine',
+      'appointment.respond-rescheduling',
       'schedule.get-availability',
       'doctor.get-by-specialty',
     ]);
@@ -158,6 +159,8 @@ describe('MEDISUR access seed', () => {
     patient.permissions = [custom];
     consultation.isActive = false;
     permissions.records.find(({ name }) => name === 'appointment.cancel-mine')!.isActive = false;
+    permissions.records.find(({ name }) => name === 'appointment.respond-rescheduling')!.isActive =
+      false;
     permissions.records.find(({ name }) => name === 'appointment.get-mine')!.isActive = false;
     permissions.records.find(({ name }) => name === 'appointment.create')!.isActive = false;
     permissions.records.find(({ name }) => name === 'schedule.get-availability')!.isActive = false;

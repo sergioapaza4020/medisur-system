@@ -7,11 +7,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import MyAppointments from './MyAppointments';
 import type CancelAppointment from './CancelAppointment';
+import type PatientProposals from './PatientProposals';
 import type ListPagination from '@/components/pagination/ListPagination';
 
 const mocks = vi.hoisted(() => ({
   index: 0,
   cancellation: null as null | ComponentProps<typeof CancelAppointment>,
+  proposals: null as null | ComponentProps<typeof PatientProposals>,
   idUser: 7,
   states: [] as unknown[],
   effects: [] as (() => void | (() => void))[],
@@ -67,7 +69,12 @@ vi.mock('@/components/pagination/ListPagination', () => ({
     return <span>Paginación común</span>;
   },
 }));
-vi.mock('./PatientProposals', () => ({ default: () => <button>Ver propuestas</button> }));
+vi.mock('./PatientProposals', () => ({
+  default: (props: ComponentProps<typeof PatientProposals>) => {
+    mocks.proposals = props;
+    return <button>Ver propuestas</button>;
+  },
+}));
 vi.mock('./CancelAppointment', () => ({
   default: (props: ComponentProps<typeof CancelAppointment>) => {
     mocks.cancellation = props;
@@ -107,9 +114,28 @@ beforeEach(() => {
   mocks.pagination = null;
   mocks.states = [query, page, { query, refresh: 0, idUser: 7 }, 0, '', null];
   mocks.cancellation = null;
+  mocks.proposals = null;
   mocks.mine.mockResolvedValue(page);
 });
 describe('My appointments', () => {
+  it('gates response permission separately and reloads the patient list after a decision', async () => {
+    mocks.states[1] = { ...page, data: [{ ...appointment, status: 'CANCELLED' }] };
+    mocks.denied.add('appointment.respond-rescheduling');
+    render();
+    expect(mocks.proposals?.canRespond).toBe(false);
+    mocks.denied.delete('appointment.respond-rescheduling');
+    render();
+    expect(mocks.proposals?.canRespond).toBe(true);
+    mocks.proposals?.onResult?.(true, 'Reprogramación aceptada');
+    expect(render()).toContain('Reprogramación aceptada');
+    expect(render()).toContain('Cargando mis citas');
+    mocks.mine.mockResolvedValue({ ...page, data: [{ ...appointment, date: '2099-11-03' }] });
+    mocks.effects[0]();
+    await flush();
+    expect(render()).toContain('2099-11-03');
+    expect(mocks.states[0]).toBe(query);
+  });
+
   it.each(['El médico no podrá atender por una emergencia.', 'Motivo extenso de cancelación. '.repeat(16)])(
     'shows the complete cancellation reason visibly: %s',
     (cancellationReason) => {

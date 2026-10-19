@@ -66,6 +66,7 @@ vi.mock('@mui/material', async (original) => {
     },
   };
 });
+vi.mock('./PatientProposals', () => ({ default: () => <button>Ver propuestas</button> }));
 vi.mock('./ProposeRescheduling', () => ({ default: () => <button>Proponer reprogramación</button> }));
 vi.mock('./CancelAppointment', () => ({
   default: (props: { mode: string; onResult: (success: boolean, message: string) => void }) => {
