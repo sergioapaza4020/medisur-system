@@ -66,7 +66,7 @@ describe('MEDISUR access seed', () => {
           : role.name === 'PATIENT'
             ? MEDISUR_PATIENT_PERMISSION_NAMES
             : role.name === 'DOCTOR'
-              ? ['schedule.create', 'schedule.update']
+              ? ['appointment.get-agenda', 'schedule.create', 'schedule.update']
               : [],
       );
     }

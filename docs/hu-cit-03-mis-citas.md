@@ -10,7 +10,7 @@ Parámetros:
 
 - `page` y `limit`: infraestructura de TASK-API-01; valores por defecto 1 y 10, límite máximo 100.
 - `period`: `upcoming` (por defecto), `past` o `all`.
-- `status`: opcional, validado con el enum de citas existente; actualmente solo `RESERVED`.
+- `status`: opcional, validado con el enum de citas existente; `RESERVED`, `CANCELLED` y `RESCHEDULED` (estos dos últimos reconocidos para lectura desde HU-CIT-04).
 - `date`: opcional, fecha civil exacta `AAAA-MM-DD`, validada estrictamente y sin año cero.
 
 Los filtros se combinan mediante AND. Las próximas tienen inicio mayor o igual al momento actual; las anteriores ya comenzaron. Esta clasificación no afirma que la atención haya concluido ni cambia el estado de la cita. La comparación utiliza PostgreSQL y `America/La_Paz`. Las próximas se ordenan de más cercana a más lejana; las anteriores, de más reciente a más antigua. El identificador de cita desambigua empates para mantener paginación estable.

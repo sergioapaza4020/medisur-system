@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -18,6 +19,8 @@ import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.d
 import { CreateAdministrativeAppointmentDto } from 'src/dtos/appointments/create-administrative-appointment.dto';
 import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selection-query.dto';
 import { BookingPatient } from '@common/types/booking-patient.type';
+import { DoctorAgendaQueryDto } from 'src/dtos/appointments/doctor-agenda-query.dto';
+import { DoctorAppointment } from '@common/types/doctor-appointment.type';
 import { SchedulesService } from '../schedules/schedules.service';
 
 @Injectable()
@@ -26,6 +29,62 @@ export class AppointmentsService {
     private readonly dataSource: DataSource,
     private readonly schedules: SchedulesService,
   ) {}
+
+  async agenda(
+    idUser: number,
+    query: DoctorAgendaQueryDto,
+  ): Promise<PaginatedResult<DoctorAppointment>> {
+    const doctor = await this.schedules.ownDoctor(this.dataSource.manager, idUser);
+    this.schedules.validateDateRange(query);
+    if (query.date === undefined && query.from === undefined)
+      throw new BadRequestException('Selecciona una fecha o un rango válido');
+    const qb = this.dataSource
+      .getRepository(Appointment)
+      .createQueryBuilder('appointment')
+      .withDeleted()
+      .leftJoinAndSelect('appointment.patient', 'patient')
+      .leftJoinAndSelect('appointment.specialty', 'specialty')
+      .select([
+        'appointment.idAppointment',
+        'appointment.date',
+        'appointment.startTime',
+        'appointment.endTime',
+        'appointment.status',
+        'patient.idUser',
+        'patient.name',
+        'patient.lastname',
+        'patient.ci',
+        'specialty.idSpecialty',
+        'specialty.name',
+      ])
+      .where('appointment.id_doctor = :idDoctor', { idDoctor: doctor.idDoctor })
+      .andWhere('appointment.deletedAt IS NULL');
+    if (query.date !== undefined) qb.andWhere('appointment.date = :date', { date: query.date });
+    else qb.andWhere('appointment.date BETWEEN :from AND :to', { from: query.from, to: query.to });
+    if (query.status !== undefined)
+      qb.andWhere('appointment.status = :status', { status: query.status });
+    qb.orderBy('appointment.date', 'ASC')
+      .addOrderBy('appointment.startTime', 'ASC')
+      .addOrderBy('appointment.idAppointment', 'ASC');
+    const result = await paginate(qb, query);
+    return {
+      ...result,
+      data: result.data.map((appointment) => ({
+        idAppointment: appointment.idAppointment,
+        patient: {
+          name: appointment.patient?.name ?? 'Paciente',
+          lastname: appointment.patient?.lastname ?? '',
+          ci: appointment.patient?.ci ?? '',
+        },
+        specialty: { name: appointment.specialty?.name ?? 'Especialidad no disponible' },
+        date: appointment.date,
+        startTime: appointment.startTime,
+        endTime: appointment.endTime,
+        status: appointment.status,
+        timeZone: 'America/La_Paz',
+      })),
+    };
+  }
 
   async mine(
     idUser: number,

@@ -55,4 +55,11 @@ describe('Appointment transport', () => {
       idPatient: 7,
     });
   });
+  it('queries the own-doctor agenda with filters and preserves common pagination metadata', async () => {
+    const query = { page: 2, limit: 5, from: '2026-11-01', to: '2026-11-30', status: 'CANCELLED' as const };
+    const page = { data: [], meta: { page: 2, limit: 5, total: 0, totalPages: 0 } };
+    vi.mocked(apiClient.get).mockResolvedValue({ data: page });
+    expect(await appointmentsService.agenda(query)).toEqual(page);
+    expect(apiClient.get).toHaveBeenCalledWith('/appointments/agenda', { params: query });
+  });
 });

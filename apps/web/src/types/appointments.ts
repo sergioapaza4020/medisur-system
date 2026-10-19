@@ -1,6 +1,6 @@
 import type { PaginatedResponse, PaginationQuery } from './pagination';
 
-export type AppointmentStatus = 'RESERVED';
+export type AppointmentStatus = 'RESERVED' | 'CANCELLED' | 'RESCHEDULED';
 export interface PatientAppointment {
   idAppointment: number;
   doctor: { name: string; lastname: string };
@@ -17,4 +17,8 @@ export interface AppointmentsQuery extends PaginationQuery {
   date?: string;
 }
 export type AppointmentsPage = PaginatedResponse<PatientAppointment>;
-export const appointmentStatusLabels: Record<AppointmentStatus, string> = { RESERVED: 'Reservada' };
+export const appointmentStatusLabels: Record<AppointmentStatus, string> = {
+  RESERVED: 'Reservada',
+  CANCELLED: 'Cancelada',
+  RESCHEDULED: 'Reprogramada',
+};

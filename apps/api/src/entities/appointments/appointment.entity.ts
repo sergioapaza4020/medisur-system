@@ -7,6 +7,8 @@ import { Schedule } from '../schedules/schedule.entity';
 
 export enum AppointmentStatus {
   RESERVED = 'RESERVED',
+  CANCELLED = 'CANCELLED',
+  RESCHEDULED = 'RESCHEDULED',
 }
 
 @Entity('appointments')

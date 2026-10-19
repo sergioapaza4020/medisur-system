@@ -25,14 +25,7 @@ export class SchedulesService {
   constructor(private readonly dataSource: DataSource) {}
 
   async availability(query: AvailabilityQueryDto): Promise<PaginatedResult<AvailabilityBlock>> {
-    if (query.from !== undefined || query.to !== undefined) {
-      const days =
-        (Date.parse(`${query.to}T00:00:00Z`) - Date.parse(`${query.from}T00:00:00Z`)) / 86400000;
-      if (query.date !== undefined || !Number.isFinite(days) || days < 0 || days > 30)
-        throw new BadRequestException(
-          'Selecciona un rango válido de hasta 31 días, sin combinarlo con date',
-        );
-    }
+    this.validateDateRange(query);
     const qb = this.availableQuery(this.dataSource.manager).andWhere(
       'doctor.idDoctor = :idDoctor',
       { idDoctor: query.idDoctor },
@@ -55,6 +48,17 @@ export class SchedulesService {
         timeZone: 'America/La_Paz',
       })),
     };
+  }
+
+  validateDateRange(query: Pick<AvailabilityQueryDto, 'date' | 'from' | 'to'>) {
+    if (query.from !== undefined || query.to !== undefined) {
+      const days =
+        (Date.parse(`${query.to}T00:00:00Z`) - Date.parse(`${query.from}T00:00:00Z`)) / 86400000;
+      if (query.date !== undefined || !Number.isFinite(days) || days < 0 || days > 30)
+        throw new BadRequestException(
+          'Selecciona un rango válido de hasta 31 días, sin combinarlo con date',
+        );
+    }
   }
 
   // Reused by booking inside its transaction after acquiring the doctor/schedule locks.
@@ -99,7 +103,7 @@ export class SchedulesService {
       .addOrderBy('schedule.idSchedule', 'ASC');
   }
 
-  private async ownDoctor(manager: EntityManager, idUser: number) {
+  async ownDoctor(manager: EntityManager, idUser: number) {
     const doctor = await manager.getRepository(Doctor).findOne({
       where: {
         user: { idUser, isActive: true, roles: { name: 'DOCTOR', isActive: true } },

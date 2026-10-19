@@ -26,6 +26,7 @@ describe('Appointment creation HTTP boundary', () => {
   };
   const service = {
     create: jest.fn(),
+    agenda: jest.fn(),
     mine: jest.fn(),
     patients: jest.fn(),
     createForPatient: jest.fn(),
@@ -53,6 +54,10 @@ describe('Appointment creation HTTP boundary', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     session.permissions = ['appointment.create'];
+    service.agenda.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
     service.mine.mockResolvedValue({
       data: [],
       meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
@@ -219,4 +224,47 @@ describe('Appointment creation HTTP boundary', () => {
       expect(service.patients).not.toHaveBeenCalled();
     },
   );
+  it('requires authentication and a specific permission for the medical agenda', async () => {
+    await request(server).get('/appointments/agenda?date=2026-11-02').expect(401);
+    await request(server)
+      .get('/appointments/agenda?date=2026-11-02')
+      .auth(token, { type: 'bearer' })
+      .expect(403);
+    expect(service.agenda).not.toHaveBeenCalled();
+  });
+  it('takes the doctor account exclusively from the session and validates date/range/status pagination', async () => {
+    session.permissions = ['appointment.get-agenda'];
+    const response = await request(server)
+      .get(
+        '/appointments/agenda?from=2026-11-01&to=2026-11-30&status=CANCELLED&page=2&limit=5&idDoctor=999&idUser=999&idPatient=999',
+      )
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.agenda).toHaveBeenCalledWith(7, {
+      from: '2026-11-01',
+      to: '2026-11-30',
+      status: 'CANCELLED',
+      page: 2,
+      limit: 5,
+    });
+    expect(response.body).toMatchObject({ data: [], meta: { total: 0 } });
+  });
+  it.each([
+    '',
+    'date=2026-02-30',
+    'date=0000-01-01',
+    'date=2026-11-01T10:00:00Z',
+    'from=2026-11-01',
+    'to=2026-11-30',
+    'date=2026-11-02&status=UNKNOWN',
+    'date=2026-11-02&page=0',
+    'date=2026-11-02&limit=101',
+  ])('rejects invalid agenda filters %s', async (query) => {
+    session.permissions = ['appointment.get-agenda'];
+    await request(server)
+      .get(`/appointments/agenda?${query}`)
+      .auth(token, { type: 'bearer' })
+      .expect(400);
+    expect(service.agenda).not.toHaveBeenCalled();
+  });
 });

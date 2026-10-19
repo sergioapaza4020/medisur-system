@@ -7,6 +7,7 @@ import { CreateAppointmentDto } from 'src/dtos/appointments/create-appointment.d
 import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.dto';
 import { CreateAdministrativeAppointmentDto } from 'src/dtos/appointments/create-administrative-appointment.dto';
 import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selection-query.dto';
+import { DoctorAgendaQueryDto } from 'src/dtos/appointments/doctor-agenda-query.dto';
 import { AppointmentsService } from 'src/services/appointments/appointments.service';
 
 @ApiBearerAuth('access-token')
@@ -15,6 +16,12 @@ import { AppointmentsService } from 'src/services/appointments/appointments.serv
 @Controller('appointments')
 export class AppointmentsController {
   constructor(private readonly service: AppointmentsService) {}
+
+  @Get('agenda')
+  @Permissions('appointment.get-agenda')
+  agenda(@CurrentUser() user: JwtPayload, @Query() query: DoctorAgendaQueryDto) {
+    return this.service.agenda(user.idUser, query);
+  }
 
   @Get('mine')
   @Permissions('appointment.get-mine')

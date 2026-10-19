@@ -1,6 +1,7 @@
 import { apiClient } from '../http/axiosClient';
 import type { AppointmentsPage, AppointmentsQuery } from '@/types/appointments';
 import type { BookingPatientsPage, PatientSelectionQuery } from '@/types/booking-patient';
+import type { DoctorAgendaPage, DoctorAgendaQuery } from '@/types/doctor-agenda';
 import type { ApiResponse } from '@/types/auth';
 import type { AvailabilityBlock } from '@/types/availability';
 
@@ -11,6 +12,9 @@ export type Appointment = Omit<AvailabilityBlock, 'version'> & {
 };
 
 export const appointmentsService = {
+  async agenda(query: DoctorAgendaQuery): Promise<DoctorAgendaPage> {
+    return (await apiClient.get<DoctorAgendaPage>('/appointments/agenda', { params: query })).data;
+  },
   async patients(query: PatientSelectionQuery): Promise<BookingPatientsPage> {
     return (await apiClient.get<BookingPatientsPage>('/appointments/patients', { params: query })).data;
   },
