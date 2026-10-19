@@ -26,6 +26,7 @@ describe('Appointment creation HTTP boundary', () => {
   };
   const service = {
     create: jest.fn(),
+    cancelMine: jest.fn(),
     agenda: jest.fn(),
     mine: jest.fn(),
     patients: jest.fn(),
@@ -70,6 +71,11 @@ describe('Appointment creation HTTP boundary', () => {
       idAppointment: 2,
       idPatient: 9,
       status: 'RESERVED',
+    });
+    service.cancelMine.mockResolvedValue({
+      idAppointment: 9,
+      status: 'CANCELLED',
+      cancelledAt: '2026-10-19T12:00:00Z',
     });
     service.create.mockResolvedValue({ idAppointment: 1, status: 'RESERVED' });
   });
@@ -266,5 +272,57 @@ describe('Appointment creation HTTP boundary', () => {
       .auth(token, { type: 'bearer' })
       .expect(400);
     expect(service.agenda).not.toHaveBeenCalled();
+  });
+  it('accepts calendar mode while keeping the session scope', async () => {
+    session.permissions = ['appointment.get-agenda'];
+    await request(server)
+      .get('/appointments/agenda?from=2026-10-01&to=2026-10-31&mode=calendar&idDoctor=999')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.agenda).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ mode: 'calendar', from: '2026-10-01', to: '2026-10-31' }),
+    );
+    expect(service.agenda).toHaveBeenCalledWith(7, {
+      mode: 'calendar',
+      from: '2026-10-01',
+      to: '2026-10-31',
+      page: 1,
+      limit: 10,
+    });
+  });
+  it('rejects an unknown calendar mode', async () => {
+    session.permissions = ['appointment.get-agenda'];
+    await request(server)
+      .get('/appointments/agenda?date=2026-10-19&mode=all')
+      .auth(token, { type: 'bearer' })
+      .expect(400);
+    expect(service.agenda).not.toHaveBeenCalled();
+  });
+  it('protects cancellation with authentication and its own permission', async () => {
+    await request(server).patch('/appointments/9/cancel').expect(401);
+    await request(server)
+      .patch('/appointments/9/cancel')
+      .auth(token, { type: 'bearer' })
+      .expect(403);
+    expect(service.cancelMine).not.toHaveBeenCalled();
+  });
+  it('passes only the appointment and session identity, ignoring forged cancellation audit and patient fields', async () => {
+    session.permissions = ['appointment.cancel-mine'];
+    const response = await request(server)
+      .patch('/appointments/9/cancel?idPatient=999')
+      .auth(token, { type: 'bearer' })
+      .send({ idPatient: 999, cancelledBy: 999, cancelledAt: '2000-01-01', status: 'RESERVED' })
+      .expect(200);
+    expect(service.cancelMine).toHaveBeenCalledWith(9, 7);
+    expect(response.body).toMatchObject({ data: { idAppointment: 9, status: 'CANCELLED' } });
+  });
+  it.each(['abc', '1.5'])('rejects malformed appointment identifier %s', async (id) => {
+    session.permissions = ['appointment.cancel-mine'];
+    await request(server)
+      .patch(`/appointments/${id}/cancel`)
+      .auth(token, { type: 'bearer' })
+      .expect(400);
+    expect(service.cancelMine).not.toHaveBeenCalled();
   });
 });

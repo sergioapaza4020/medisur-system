@@ -33,6 +33,67 @@ describe('Doctor agenda SQL and scope', () => {
       .mockResolvedValue({ idDoctor: 3 } as Doctor);
   });
   afterEach(() => jest.restoreAllMocks());
+  it.each([
+    { from: '2026-10-19', to: '2026-10-19' },
+    { from: '2026-10-19', to: '2026-10-25' },
+    { from: '2026-10-01', to: '2026-10-31' },
+  ])('returns the complete calendar range without pagination %j', async (range) => {
+    const repository = source.getRepository(Appointment);
+    const qb = repository.createQueryBuilder('appointment');
+    jest.spyOn(repository, 'createQueryBuilder').mockReturnValue(qb);
+    const rows = Array.from(
+      { length: 105 },
+      (_, idAppointment) =>
+        ({
+          idAppointment,
+          date: range.from,
+          startTime: '09:00:00',
+          endTime: '09:30:00',
+          status: AppointmentStatus.RESERVED,
+          patient: { name: 'Ana', lastname: 'Pérez', ci: '123' },
+          specialty: { name: 'Cardiología' },
+        }) as Appointment,
+    );
+    jest.spyOn(qb, 'getMany').mockResolvedValue(rows);
+    const result = await service.agenda(
+      7,
+      Object.assign(new DoctorAgendaQueryDto(), {
+        ...range,
+        mode: 'calendar',
+        limit: 1,
+        page: 9,
+        idDoctor: 999,
+      }),
+    );
+    expect(result.data).toHaveLength(105);
+    expect(result.data[0].patient).toEqual({ name: 'Ana', lastname: 'Pérez' });
+    expect(qb.getQuery()).not.toContain('"patient"."ci"');
+    expect(result.meta).toEqual({ page: 1, limit: 105, total: 105, totalPages: 1 });
+    expect(qb.expressionMap.take).toBeUndefined();
+    expect(qb.expressionMap.skip).toBeUndefined();
+    expect(qb.getParameters()).toMatchObject({ ...range, idDoctor: 3 });
+    expect(qb.expressionMap.orderBys).toEqual({
+      'appointment.date': 'ASC',
+      'appointment.startTime': 'ASC',
+      'appointment.idAppointment': 'ASC',
+    });
+    expect(JSON.stringify(result)).not.toMatch(/email|password|diagnosis|notes|idUser/);
+  });
+  it('returns an empty complete calendar period', async () => {
+    const repository = source.getRepository(Appointment);
+    const qb = repository.createQueryBuilder('appointment');
+    jest.spyOn(repository, 'createQueryBuilder').mockReturnValue(qb);
+    jest.spyOn(qb, 'getMany').mockResolvedValue([]);
+    expect(
+      await service.agenda(
+        7,
+        Object.assign(new DoctorAgendaQueryDto(), {
+          date: '2026-10-19',
+          mode: 'calendar',
+        }),
+      ),
+    ).toEqual({ data: [], meta: { page: 1, limit: 0, total: 0, totalPages: 0 } });
+  });
   it('reuses active doctor validation and scopes both records and totals before pagination', async () => {
     const repository = source.getRepository(Appointment);
     const qb = repository.createQueryBuilder('appointment');

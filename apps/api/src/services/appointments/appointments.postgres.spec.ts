@@ -14,6 +14,7 @@ import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selectio
 import { DoctorAgendaQueryDto } from 'src/dtos/appointments/doctor-agenda-query.dto';
 import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.dto';
 import { AvailabilityQueryDto } from 'src/dtos/schedules/availability-query.dto';
+import { AppointmentCancellation1792540000000 } from 'src/database/migrations/1792540000000-AppointmentCancellation';
 import { CreateAppointments1792450000000 } from 'src/database/migrations/1792450000000-CreateAppointments';
 import { SchedulesService } from '../schedules/schedules.service';
 import { AppointmentsService } from './appointments.service';
@@ -60,6 +61,7 @@ postgres('Appointment booking against PostgreSQL', () => {
     await source.query(`DROP TABLE "${schema}".appointments`);
     const runner = source.createQueryRunner();
     await new CreateAppointments1792450000000().up(runner);
+    await new AppointmentCancellation1792540000000().up(runner);
     await runner.release();
     schedules = new SchedulesService(source);
     service = new AppointmentsService(source, schedules);
@@ -433,6 +435,25 @@ postgres('Appointment booking against PostgreSQL', () => {
       query({ from: date, to: '2099-11-03', limit: 1, page: 2 }),
     );
     expect(range.meta).toMatchObject({ total: 2, totalPages: 2 });
+    for (const [from, to, expected] of [
+      [date, date, [own.idAppointment]],
+      ['2099-11-02', '2099-11-08', [own.idAppointment, changed.idAppointment]],
+      ['2099-11-01', '2099-11-30', [own.idAppointment, changed.idAppointment]],
+    ] as const) {
+      const calendar = await service.agenda(
+        doctor.user.idUser,
+        query({
+          from,
+          to,
+          mode: 'calendar',
+          page: 3,
+          limit: 1,
+        }),
+      );
+      expect(calendar.data.map((row) => row.idAppointment)).toEqual(expected);
+      expect(calendar.data[0].patient).toEqual({ name: patient.name, lastname: patient.lastname });
+      expect(JSON.stringify(calendar)).not.toMatch(/"ci"|email|password|diagnosis|notes/);
+    }
     expect(range.data[0]).toMatchObject({
       idAppointment: changed.idAppointment,
       status: 'CANCELLED',
@@ -482,4 +503,190 @@ postgres('Appointment booking against PostgreSQL', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     },
   );
+  it('cancels an own future reservation, preserves history and audit, and releases the block for a new patient', async () => {
+    const booked = await service.create(dto(), patient.idUser);
+    const before = await source
+      .getRepository(Appointment)
+      .findOneByOrFail({ idAppointment: booked.idAppointment });
+    const result = await service.cancelMine(booked.idAppointment, patient.idUser);
+    expect(result).toMatchObject({
+      idAppointment: booked.idAppointment,
+      status: 'CANCELLED',
+      cancelledAt: expect.any(Date) as Date,
+    });
+    const stored = await source
+      .getRepository(Appointment)
+      .findOneByOrFail({ idAppointment: booked.idAppointment });
+    expect(stored).toMatchObject({
+      date: before.date,
+      startTime: before.startTime,
+      endTime: before.endTime,
+      createdBy: before.createdBy,
+      cancelledBy: patient.idUser,
+      updatedBy: patient.idUser,
+      status: 'CANCELLED',
+      deletedAt: null,
+    });
+    expect(stored.cancelledAt).toBeInstanceOf(Date);
+    expect((await availability()).meta.total).toBe(1);
+    const next = await service.createForPatient(
+      { ...dto(), idPatient: other.idUser },
+      patient.idUser,
+    );
+    expect(next.idAppointment).not.toBe(booked.idAppointment);
+    expect(await source.getRepository(Appointment).count()).toBe(2);
+    expect((await availability()).meta.total).toBe(0);
+    await expect(service.cancelMine(booked.idAppointment, patient.idUser)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    const unchanged = await source
+      .getRepository(Appointment)
+      .findOneByOrFail({ idAppointment: booked.idAppointment });
+    expect(unchanged.cancelledAt).toEqual(stored.cancelledAt);
+    expect((await availability()).meta.total).toBe(0);
+    const rollbackRunner = source.createQueryRunner();
+    try {
+      await expect(new AppointmentCancellation1792540000000().down(rollbackRunner)).rejects.toThrow(
+        'históricas',
+      );
+    } finally {
+      await rollbackRunner.release();
+    }
+    expect(await source.getRepository(Appointment).count()).toBe(2);
+  });
+  it('does not reveal or cancel another patient appointment or a nonexistent identifier', async () => {
+    const booked = await service.create(dto(), patient.idUser);
+    await expect(service.cancelMine(booked.idAppointment, other.idUser)).rejects.toThrow(
+      'Cita propia no encontrada',
+    );
+    await expect(service.cancelMine(999999, patient.idUser)).rejects.toThrow(
+      'Cita propia no encontrada',
+    );
+    expect(
+      (
+        await source
+          .getRepository(Appointment)
+          .findOneByOrFail({ idAppointment: booked.idAppointment })
+      ).status,
+    ).toBe('RESERVED');
+    expect((await availability()).meta.total).toBe(0);
+  });
+  it.each(['CANCELLED', 'RESCHEDULED', 'COMPLETED', 'ATTENDED'])(
+    'rejects cancelling incompatible state %s',
+    async (status) => {
+      const booked = await service.create(dto(), patient.idUser);
+      await source
+        .getRepository(Appointment)
+        .update(booked.idAppointment, { status: status as AppointmentStatus });
+      await expect(service.cancelMine(booked.idAppointment, patient.idUser)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      const stored = await source
+        .getRepository(Appointment)
+        .findOneByOrFail({ idAppointment: booked.idAppointment });
+      expect(stored.status).toBe(status);
+      expect(stored.cancelledAt).toBeNull();
+      expect(stored.cancelledBy).toBeNull();
+    },
+  );
+  it.each(['past', 'started', 'inactive', 'deleted'])(
+    'rejects cancellation of %s appointments',
+    async (invalid) => {
+      const booked = await service.create(dto(), patient.idUser);
+      const repository = source.getRepository(Appointment);
+      if (invalid === 'past') await repository.update(booked.idAppointment, { date: '2000-01-01' });
+      if (invalid === 'started')
+        await source.query(
+          `UPDATE appointments SET date = (clock_timestamp() AT TIME ZONE 'America/La_Paz')::date, start_time = (clock_timestamp() AT TIME ZONE 'America/La_Paz')::time, end_time = '23:59:59.999999' WHERE id_appointment = $1`,
+          [booked.idAppointment],
+        );
+      if (invalid === 'inactive')
+        await repository.update(booked.idAppointment, { isActive: false });
+      if (invalid === 'deleted') await repository.softDelete(booked.idAppointment);
+      await expect(service.cancelMine(booked.idAppointment, patient.idUser)).rejects.toThrow();
+      const stored = await repository.findOneOrFail({
+        where: { idAppointment: booked.idAppointment },
+        withDeleted: true,
+      });
+      expect(stored.status).toBe('RESERVED');
+      expect(stored.cancelledAt).toBeNull();
+    },
+  );
+  it('handles duplicate cancellations and competing reservations without overwriting the cancelled history', async () => {
+    const booked = await service.create(dto(), patient.idUser);
+    const cancellations = await Promise.allSettled(
+      Array.from({ length: 4 }, () => service.cancelMine(booked.idAppointment, patient.idUser)),
+    );
+    expect(cancellations.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const reservations = await Promise.allSettled(
+      Array.from({ length: 6 }, (_, index) =>
+        service.create(dto(), index % 2 ? patient.idUser : other.idUser),
+      ),
+    );
+    expect(reservations.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(await source.getRepository(Appointment).count()).toBe(2);
+    expect((await availability()).meta.total).toBe(0);
+  });
+  it('serializes cancellation and a new booking under the shared doctor lock', async () => {
+    const booked = await service.create(dto(), patient.idUser);
+    const [cancelled, reserved] = await Promise.allSettled([
+      service.cancelMine(booked.idAppointment, patient.idUser),
+      service.create(dto(), other.idUser),
+    ]);
+    expect(cancelled.status).toBe('fulfilled');
+    if (reserved.status === 'rejected') {
+      expect(reserved.reason).toBeInstanceOf(ConflictException);
+      await service.create(dto(), other.idUser);
+    }
+    expect(await source.getRepository(Appointment).count()).toBe(2);
+    expect((await availability()).meta.total).toBe(0);
+  });
+  it('keeps inactive schedules unavailable after cancellation and permits editing blocks with cancelled history', async () => {
+    const booked = await service.create(dto(), patient.idUser);
+    await service.cancelMine(booked.idAppointment, patient.idUser);
+    await schedules.update(
+      schedule.idSchedule,
+      {
+        idSpecialty: specialty.idSpecialty,
+        date,
+        startTime: '09:00',
+        endTime: '10:00',
+        isActive: false,
+        expectedVersion: schedule.version,
+      },
+      doctor.user.idUser,
+    );
+    expect((await availability()).meta.total).toBe(0);
+    expect(
+      (
+        await source
+          .getRepository(Appointment)
+          .findOneByOrFail({ idAppointment: booked.idAppointment })
+      ).date,
+    ).toBe(date);
+  });
+  it('allows cancellation even when the related doctor profile was logically deleted', async () => {
+    const booked = await service.create(dto(), patient.idUser);
+    await source.getRepository(Doctor).softDelete(doctor.idDoctor);
+    await expect(service.cancelMine(booked.idAppointment, patient.idUser)).resolves.toMatchObject({
+      status: 'CANCELLED',
+    });
+    expect((await availability()).meta.total).toBe(0);
+  });
+
+  it('supports the cancellation migration round trip without deleting appointments when the old uniqueness rule is restorable', async () => {
+    await service.create(dto(), patient.idUser);
+    const runner = source.createQueryRunner();
+    await runner.startTransaction();
+    try {
+      const migration = new AppointmentCancellation1792540000000();
+      await migration.down(runner);
+      await migration.up(runner);
+      await runner.commitTransaction();
+    } finally {
+      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      await runner.release();
+    }
+    expect(await source.getRepository(Appointment).count()).toBe(1);
+  });
 });

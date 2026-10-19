@@ -12,6 +12,15 @@ export type Appointment = Omit<AvailabilityBlock, 'version'> & {
 };
 
 export const appointmentsService = {
+  async cancelMine(
+    idAppointment: number,
+  ): Promise<{ idAppointment: number; status: 'CANCELLED'; cancelledAt: string }> {
+    return (
+      await apiClient.patch<ApiResponse<{ idAppointment: number; status: 'CANCELLED'; cancelledAt: string }>>(
+        `/appointments/${idAppointment}/cancel`,
+      )
+    ).data.data;
+  },
   async agenda(query: DoctorAgendaQuery): Promise<DoctorAgendaPage> {
     return (await apiClient.get<DoctorAgendaPage>('/appointments/agenda', { params: query })).data;
   },

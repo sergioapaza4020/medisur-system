@@ -20,6 +20,7 @@ import { appointmentsService } from '@/services/appointments/appointmentsService
 import type { AppointmentsPage, AppointmentsQuery, AppointmentStatus } from '@/types/appointments';
 import { appointmentStatusLabels } from '@/types/appointments';
 import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
+import CancelAppointment from './CancelAppointment';
 import tableStyles from '@core/styles/table.module.css';
 
 export default function MyAppointments() {
@@ -35,6 +36,9 @@ export default function MyAppointments() {
   } | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState<{ success: boolean; message: string; idUser: number | undefined } | null>(
+    null,
+  );
   const loading = completed?.query !== query || completed?.refresh !== refresh || completed?.idUser !== idUser;
   useEffect(() => {
     if (!allowed) return;
@@ -67,6 +71,9 @@ export default function MyAppointments() {
       <CardContent>
         <Stack spacing={3}>
           <Typography variant='h5'>Mis citas médicas</Typography>
+          {feedback && feedback.idUser === idUser && (
+            <Alert severity={feedback.success ? 'success' : 'error'}>{feedback.message}</Alert>
+          )}
           <Typography>
             Fechas y horas de Bolivia. Las citas anteriores son aquellas cuya hora de inicio ya pasó.
           </Typography>
@@ -136,6 +143,7 @@ export default function MyAppointments() {
                           <th>Fecha</th>
                           <th>Hora</th>
                           <th>Estado</th>
+                          {hasPermission('appointment.cancel-mine') && <th>Acciones</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -150,6 +158,18 @@ export default function MyAppointments() {
                               {appointment.startTime.slice(0, 5)}–{appointment.endTime.slice(0, 5)}
                             </td>
                             <td>{appointmentStatusLabels[appointment.status]}</td>
+                            {hasPermission('appointment.cancel-mine') && (
+                              <td>
+                                <CancelAppointment
+                                  key={`${idUser}-${appointment.idAppointment}`}
+                                  appointment={appointment}
+                                  onResult={(success, message) => {
+                                    setFeedback({ success, message, idUser });
+                                    setRefresh((value) => value + 1);
+                                  }}
+                                />
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>

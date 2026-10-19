@@ -2,6 +2,7 @@ import type { PaginatedResponse, PaginationQuery } from './pagination';
 import type { AppointmentStatus } from './appointments';
 
 export interface DoctorAgendaQuery extends PaginationQuery {
+  mode?: 'list' | 'calendar';
   date?: string;
   from?: string;
   to?: string;
@@ -9,7 +10,7 @@ export interface DoctorAgendaQuery extends PaginationQuery {
 }
 export interface DoctorAppointment {
   idAppointment: number;
-  patient: { name: string; lastname: string; ci: string };
+  patient: { name: string; lastname: string; ci?: string };
   specialty: { name: string };
   date: string;
   startTime: string;

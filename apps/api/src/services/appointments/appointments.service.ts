@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, QueryFailedError } from 'typeorm';
+import { DataSource, IsNull, QueryFailedError } from 'typeorm';
 import { User } from 'src/entities/users/users.entity';
 import { Doctor } from 'src/entities/doctors/doctors.entity';
 import { Schedule } from 'src/entities/schedules/schedule.entity';
@@ -30,6 +30,74 @@ export class AppointmentsService {
     private readonly schedules: SchedulesService,
   ) {}
 
+  async cancelMine(idAppointment: number, idUser: number) {
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(Appointment);
+      const initial = await repository.findOne({
+        where: { idAppointment, patient: { idUser }, deletedAt: IsNull() },
+        withDeleted: true,
+        relations: { doctor: true, schedule: true },
+      });
+      if (!initial) throw new NotFoundException('Cita propia no encontrada');
+      // Same order as booking and schedule edits: doctor, schedule, appointment.
+      await manager.getRepository(Doctor).findOne({
+        where: { idDoctor: initial.doctor.idDoctor },
+        withDeleted: true,
+        lock: { mode: 'pessimistic_write' },
+      });
+      await manager.getRepository(Schedule).findOne({
+        where: { idSchedule: initial.schedule.idSchedule },
+        withDeleted: true,
+        lock: { mode: 'pessimistic_write' },
+      });
+      const locked = await repository
+        .createQueryBuilder('appointment')
+        .where('appointment.idAppointment = :idAppointment AND appointment.id_patient = :idUser', {
+          idAppointment,
+          idUser,
+        })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!locked) throw new NotFoundException('Cita propia no encontrada');
+      // Evaluate state and the database clock after waiting, within the same atomic update.
+      const result = await repository
+        .createQueryBuilder()
+        .update(Appointment)
+        .set({
+          status: AppointmentStatus.CANCELLED,
+          cancelledAt: () => 'clock_timestamp()',
+          cancelledBy: idUser,
+          updatedBy: idUser,
+        })
+        .where('id_appointment = :idAppointment AND id_patient = :idUser', {
+          idAppointment,
+          idUser,
+        })
+        .andWhere('status = :status AND is_active = true AND deleted_at IS NULL', {
+          status: AppointmentStatus.RESERVED,
+        })
+        .andWhere('(date + start_time) > (clock_timestamp() AT TIME ZONE :timeZone)', {
+          timeZone: 'America/La_Paz',
+        })
+        .returning(['idAppointment', 'status', 'cancelledAt'])
+        .execute();
+      if (result.affected !== 1)
+        throw new ConflictException(
+          'Solo puedes cancelar citas reservadas que aún no hayan comenzado',
+        );
+      const rows = result.raw as {
+        id_appointment: number;
+        status: AppointmentStatus;
+        cancelled_at: Date;
+      }[];
+      return {
+        idAppointment: rows[0].id_appointment,
+        status: rows[0].status,
+        cancelledAt: rows[0].cancelled_at,
+      };
+    });
+  }
+
   async agenda(
     idUser: number,
     query: DoctorAgendaQueryDto,
@@ -53,7 +121,7 @@ export class AppointmentsService {
         'patient.idUser',
         'patient.name',
         'patient.lastname',
-        'patient.ci',
+        ...(query.mode === 'calendar' ? [] : ['patient.ci']),
         'specialty.idSpecialty',
         'specialty.name',
       ])
@@ -66,7 +134,20 @@ export class AppointmentsService {
     qb.orderBy('appointment.date', 'ASC')
       .addOrderBy('appointment.startTime', 'ASC')
       .addOrderBy('appointment.idAppointment', 'ASC');
-    const result = await paginate(qb, query);
+    // Calendar periods are bounded to 31 days by the same range validation above.
+    // Return the complete period, without silently truncating busy months.
+    const result =
+      query.mode === 'calendar'
+        ? await qb.getMany().then((data) => ({
+            data,
+            meta: {
+              page: 1,
+              limit: data.length,
+              total: data.length,
+              totalPages: data.length ? 1 : 0,
+            },
+          }))
+        : await paginate(qb, query);
     return {
       ...result,
       data: result.data.map((appointment) => ({
@@ -74,7 +155,7 @@ export class AppointmentsService {
         patient: {
           name: appointment.patient?.name ?? 'Paciente',
           lastname: appointment.patient?.lastname ?? '',
-          ci: appointment.patient?.ci ?? '',
+          ...(query.mode === 'calendar' ? {} : { ci: appointment.patient?.ci ?? '' }),
         },
         specialty: { name: appointment.specialty?.name ?? 'Especialidad no disponible' },
         date: appointment.date,

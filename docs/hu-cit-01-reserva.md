@@ -60,3 +60,5 @@ Las pruebas reales de base de datos requieren `APPOINTMENTS_TEST_DATABASE_URL` a
 - Suite frontend completa con directorio temporal local: 43 archivos, 290 pruebas correctas.
 - La restricción del entorno impedía conexiones HTTP locales y ciertas operaciones en la carpeta temporal del sistema; las pruebas HTTP/PostgreSQL y el build se ejecutaron con permisos ampliados, sin modificar las configuraciones del proyecto.
 - CI remota no ejecutada desde esta tarea. Migración y seed pendientes de aplicar en el entorno de destino; la validación PostgreSQL se realizó en un esquema temporal aislado.
+
+Integración posterior HU-CIT-05: la unicidad permite conservar citas canceladas y una nueva reserva del mismo bloque. Solo las citas no canceladas ocupan el horario; véase [Cancelación de citas](hu-cit-05-cancelacion.md).
