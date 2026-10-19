@@ -3,7 +3,9 @@ import type { PaginatedResponse, PaginationQuery } from './pagination';
 export interface AvailabilityQuery extends PaginationQuery {
   idDoctor: number;
   idSpecialty?: number;
-  date: string;
+  date?: string;
+  from?: string;
+  to?: string;
 }
 export interface AvailabilityBlock {
   idSchedule: number;
