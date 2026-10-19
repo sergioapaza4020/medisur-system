@@ -157,7 +157,18 @@ export default function MyAppointments() {
                             <td>
                               {appointment.startTime.slice(0, 5)}–{appointment.endTime.slice(0, 5)}
                             </td>
-                            <td>{appointmentStatusLabels[appointment.status]}</td>
+                            <td>
+                              {appointmentStatusLabels[appointment.status]}
+                              {appointment.status === 'CANCELLED' && (
+                                <Stack spacing={1} sx={{ mt: 1, maxWidth: 360, whiteSpace: 'normal' }}>
+                                  <Typography variant='subtitle2'>Motivo de cancelación</Typography>
+                                  <Typography variant='body2' sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                                    {appointment.cancellationReason?.trim() ||
+                                      'No se registró un motivo de cancelación.'}
+                                  </Typography>
+                                </Stack>
+                              )}
+                            </td>
                             {hasPermission('appointment.cancel-mine') && (
                               <td>
                                 <CancelAppointment

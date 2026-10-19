@@ -94,6 +94,7 @@ describe('Own appointments SQL and projection', () => {
         startTime: '09:00:00',
         endTime: '10:00:00',
         status: 'RESERVED',
+        cancellationReason: null,
         timeZone: 'America/La_Paz',
       });
       expect(JSON.stringify(result)).not.toMatch(
@@ -102,6 +103,42 @@ describe('Own appointments SQL and projection', () => {
       expect(qb.getQuery()).not.toContain('is_active');
     },
   );
+  it.each([
+    [AppointmentStatus.CANCELLED, 'Urgencia médica', 'Urgencia médica'],
+    [AppointmentStatus.CANCELLED, null, null],
+    [AppointmentStatus.RESERVED, 'Texto inconsistente', null],
+    [AppointmentStatus.RESCHEDULED, 'Texto inconsistente', null],
+  ])('returns a controlled reason for %s (%s)', async (status, reason, expected) => {
+    const repository = source.getRepository(Appointment);
+    const qb = repository.createQueryBuilder('appointment');
+    jest.spyOn(repository, 'createQueryBuilder').mockReturnValue(qb);
+    jest.spyOn(qb, 'getManyAndCount').mockResolvedValue([
+      [
+        {
+          idAppointment: 1,
+          status,
+          cancellationReason: reason,
+          cancellationSource: 'DOCTOR',
+          cancelledBy: 99,
+          updatedBy: 99,
+          notes: 'Interno',
+          diagnosis: 'Privado',
+        } as unknown as Appointment,
+      ],
+      1,
+    ]);
+    const result = await service.mine(
+      7,
+      Object.assign(new AppointmentsQueryDto(), { period: 'all', idPatient: 999 }),
+    );
+    expect(result.data[0].cancellationReason).toBe(expected);
+    expect(qb.getQuery()).toContain('"appointment"."cancellation_reason"');
+    expect(qb.getQuery()).toContain('"appointment"."id_patient" = :idUser');
+    expect(qb.getParameters().idUser).toBe(7);
+    expect(JSON.stringify(result)).not.toMatch(
+      /cancellationSource|cancelledBy|updatedBy|notes|diagnosis/,
+    );
+  });
   it.each(['upcoming', 'all'] as const)(
     'returns a paginated empty result for %s',
     async (period) => {

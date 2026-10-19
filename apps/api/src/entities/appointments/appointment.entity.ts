@@ -1,4 +1,12 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Index } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  Index,
+  Check,
+} from 'typeorm';
 import { BaseEntity } from '@common/entities/base.entity';
 import { User } from '../users/users.entity';
 import { Doctor } from '../doctors/doctors.entity';
@@ -12,6 +20,16 @@ export enum AppointmentStatus {
 }
 
 @Entity('appointments')
+@Check(
+  'CHK_appointment_cancellation_source',
+  "cancellation_source IS NULL OR cancellation_source IN ('PATIENT', 'DOCTOR')",
+)
+@Check(
+  'CHK_appointment_doctor_cancellation',
+  `cancellation_source IS DISTINCT FROM 'DOCTOR' OR
+  (status = 'CANCELLED' AND cancelled_at IS NOT NULL AND cancelled_by IS NOT NULL
+    AND cancellation_reason IS NOT NULL AND length(btrim(cancellation_reason)) > 0)`,
+)
 export class Appointment extends BaseEntity {
   @PrimaryGeneratedColumn({ name: 'id_appointment' })
   idAppointment: number;
@@ -47,6 +65,12 @@ export class Appointment extends BaseEntity {
 
   @Column({ name: 'cancelled_by', type: 'integer', nullable: true })
   cancelledBy: number | null;
+
+  @Column({ name: 'cancellation_reason', type: 'varchar', length: 500, nullable: true })
+  cancellationReason: string | null;
+
+  @Column({ name: 'cancellation_source', type: 'varchar', length: 10, nullable: true })
+  cancellationSource: 'PATIENT' | 'DOCTOR' | null;
 
   @Column({ type: 'varchar', default: AppointmentStatus.RESERVED })
   status: AppointmentStatus;

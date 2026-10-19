@@ -69,3 +69,10 @@ describe('Appointment transport', () => {
     expect(apiClient.patch).toHaveBeenCalledWith('/appointments/9/cancel');
   });
 });
+
+it('sends only the reason to the doctor cancellation endpoint', async () => {
+  const result = { idAppointment: 9, status: 'CANCELLED', cancelledAt: '2026-10-19T12:00:00Z' };
+  vi.mocked(apiClient.patch).mockResolvedValue({ data: { data: result } });
+  expect(await appointmentsService.cancelAsDoctor(9, 'Urgencia')).toEqual(result);
+  expect(apiClient.patch).toHaveBeenCalledWith('/appointments/9/cancel-as-doctor', { reason: 'Urgencia' });
+});

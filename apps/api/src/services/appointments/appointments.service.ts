@@ -30,11 +30,28 @@ export class AppointmentsService {
     private readonly schedules: SchedulesService,
   ) {}
 
-  async cancelMine(idAppointment: number, idUser: number) {
+  cancelMine(idAppointment: number, idUser: number) {
+    return this.cancel(idAppointment, idUser);
+  }
+
+  cancelAsDoctor(idAppointment: number, idUser: number, reason: string) {
+    if (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 500)
+      throw new BadRequestException('Indica un motivo de cancelación de entre 1 y 500 caracteres');
+    return this.cancel(idAppointment, idUser, reason.trim());
+  }
+
+  private async cancel(idAppointment: number, idUser: number, reason?: string) {
     return this.dataSource.transaction(async (manager) => {
+      const doctor =
+        reason === undefined ? undefined : await this.schedules.ownDoctor(manager, idUser);
+      const scope = doctor ? { doctor: { idDoctor: doctor.idDoctor } } : { patient: { idUser } };
+      const ownerColumn = doctor ? 'id_doctor' : 'id_patient';
+      const ownerId = doctor?.idDoctor ?? idUser;
+      const scopeSql = `${ownerColumn} = :idUser`;
+
       const repository = manager.getRepository(Appointment);
       const initial = await repository.findOne({
-        where: { idAppointment, patient: { idUser }, deletedAt: IsNull() },
+        where: { idAppointment, ...scope, deletedAt: IsNull() },
         withDeleted: true,
         relations: { doctor: true, schedule: true },
       });
@@ -50,11 +67,13 @@ export class AppointmentsService {
         withDeleted: true,
         lock: { mode: 'pessimistic_write' },
       });
+      if (doctor && (await this.schedules.ownDoctor(manager, idUser)).idDoctor !== doctor.idDoctor)
+        throw new ForbiddenException('El perfil médico ya no es válido para esta cita');
       const locked = await repository
         .createQueryBuilder('appointment')
-        .where('appointment.idAppointment = :idAppointment AND appointment.id_patient = :idUser', {
+        .where(`appointment.idAppointment = :idAppointment AND appointment.${scopeSql}`, {
           idAppointment,
-          idUser,
+          idUser: ownerId,
         })
         .setLock('pessimistic_write')
         .getOne();
@@ -67,11 +86,14 @@ export class AppointmentsService {
           status: AppointmentStatus.CANCELLED,
           cancelledAt: () => 'clock_timestamp()',
           cancelledBy: idUser,
+          // Durable integration context for EPIC-07, committed atomically with cancellation.
+          cancellationReason: reason ?? null,
+          cancellationSource: doctor ? 'DOCTOR' : 'PATIENT',
           updatedBy: idUser,
         })
-        .where('id_appointment = :idAppointment AND id_patient = :idUser', {
+        .where(`id_appointment = :idAppointment AND ${scopeSql}`, {
           idAppointment,
-          idUser,
+          idUser: ownerId,
         })
         .andWhere('status = :status AND is_active = true AND deleted_at IS NULL', {
           status: AppointmentStatus.RESERVED,
@@ -186,6 +208,7 @@ export class AppointmentsService {
         'appointment.startTime',
         'appointment.endTime',
         'appointment.status',
+        'appointment.cancellationReason',
         'doctor.idDoctor',
         'doctorUser.idUser',
         'doctorUser.name',
@@ -221,6 +244,10 @@ export class AppointmentsService {
         startTime: appointment.startTime,
         endTime: appointment.endTime,
         status: appointment.status,
+        cancellationReason:
+          appointment.status === AppointmentStatus.CANCELLED
+            ? (appointment.cancellationReason ?? null)
+            : null,
         timeZone: 'America/La_Paz',
       })),
     };
