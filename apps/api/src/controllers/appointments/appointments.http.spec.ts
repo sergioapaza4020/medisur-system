@@ -24,7 +24,12 @@ describe('Appointment creation HTTP boundary', () => {
     roles: ['PATIENT'],
     permissions: ['appointment.create'],
   };
-  const service = { create: jest.fn(), mine: jest.fn() };
+  const service = {
+    create: jest.fn(),
+    mine: jest.fn(),
+    patients: jest.fn(),
+    createForPatient: jest.fn(),
+  };
   beforeAll(async () => {
     previous = process.env.JWT_ACCESS_SECRET;
     process.env.JWT_ACCESS_SECRET = 'booking-http-test';
@@ -51,6 +56,15 @@ describe('Appointment creation HTTP boundary', () => {
     service.mine.mockResolvedValue({
       data: [],
       meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
+    service.patients.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
+    service.createForPatient.mockResolvedValue({
+      idAppointment: 2,
+      idPatient: 9,
+      status: 'RESERVED',
     });
     service.create.mockResolvedValue({ idAppointment: 1, status: 'RESERVED' });
   });
@@ -145,4 +159,64 @@ describe('Appointment creation HTTP boundary', () => {
       .expect(400);
     expect(service.mine).not.toHaveBeenCalled();
   });
+  it('protects patient lookup and administrative creation with a separate permission', async () => {
+    await request(server).get('/appointments/patients?search=Ana').expect(401);
+    await request(server).post('/appointments/for-patient').send({}).expect(401);
+    await request(server)
+      .get('/appointments/patients?search=Ana')
+      .auth(token, { type: 'bearer' })
+      .expect(403);
+    await request(server)
+      .post('/appointments/for-patient')
+      .auth(token, { type: 'bearer' })
+      .send({ idSchedule: 9, expectedVersion: 1, idPatient: 8 })
+      .expect(403);
+    expect(service.createForPatient).not.toHaveBeenCalled();
+    expect(service.patients).not.toHaveBeenCalled();
+  });
+  it('uses the selected patient and session actor only with the administrative permission', async () => {
+    session.permissions = ['appointment.create-for-patient'];
+    await request(server)
+      .post('/appointments/for-patient')
+      .auth(token, { type: 'bearer' })
+      .send({
+        idSchedule: 9,
+        expectedVersion: 1,
+        idPatient: 9,
+        createdBy: 999,
+        actorId: 999,
+        status: 'PAID',
+      })
+      .expect(201);
+    expect(service.createForPatient).toHaveBeenCalledWith(
+      { idSchedule: 9, expectedVersion: 1, idPatient: 9 },
+      7,
+    );
+    expect(service.create).not.toHaveBeenCalled();
+    await request(server)
+      .get('/appointments/patients?search=%20Ana%20&page=2&limit=5')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.patients).toHaveBeenCalledWith({ search: 'Ana', page: 2, limit: 5 });
+  });
+  it.each([undefined, 0, -1, 1.5, '9'])('validates target patient %j', async (idPatient) => {
+    session.permissions = ['appointment.create-for-patient'];
+    await request(server)
+      .post('/appointments/for-patient')
+      .auth(token, { type: 'bearer' })
+      .send({ idSchedule: 9, expectedVersion: 1, idPatient })
+      .expect(400);
+    expect(service.createForPatient).not.toHaveBeenCalled();
+  });
+  it.each(['', 'search=ab', 'search=%20%20%20', 'search=Ana&limit=101', 'search=Ana&page=0'])(
+    'validates bounded patient search %s',
+    async (query) => {
+      session.permissions = ['appointment.create-for-patient'];
+      await request(server)
+        .get(`/appointments/patients?${query}`)
+        .auth(token, { type: 'bearer' })
+        .expect(400);
+      expect(service.patients).not.toHaveBeenCalled();
+    },
+  );
 });

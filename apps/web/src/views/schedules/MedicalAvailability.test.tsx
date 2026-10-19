@@ -82,10 +82,11 @@ const block = {
   endTime: '11:15:00',
   timeZone: 'America/La_Paz' as const,
 };
-function render() {
+const patient = { idUser: 9, name: 'Ana', lastname: 'Pérez', ci: '123456' };
+function render(bookingFor?: typeof patient) {
   mocks.index = 0;
   mocks.effects = [];
-  return renderToStaticMarkup(<MedicalAvailability />);
+  return renderToStaticMarkup(<MedicalAvailability bookingFor={bookingFor} />);
 }
 async function load() {
   render();
@@ -258,5 +259,21 @@ describe('Medical availability calendar', () => {
     vi.setSystemTime(new Date('2026-11-01T02:00:00Z'));
     expect(boliviaToday()).toBe('2026-10-31');
     vi.useRealTimers();
+  });
+  it('allows administrative booking without the self-booking permission and preserves the target in slots', async () => {
+    mocks.denied.add('appointment.create');
+    mocks.availability.mockResolvedValue({ data: [block], meta: { totalPages: 1 } });
+    await load();
+    render(patient);
+    mocks.calendar?.onSelect(block.date);
+    expect(render(patient)).toContain('Reservar');
+    expect(mocks.slots?.bookingFor).toEqual(patient);
+    expect(mocks.slots?.onReserve).toBeDefined();
+  });
+  it('does not fall back to self-booking when administrative booking lacks its permission', () => {
+    mocks.denied.add('appointment.create-for-patient');
+    expect(render(patient)).toContain('No tienes permiso');
+    mocks.effects.forEach((effect) => effect());
+    expect(mocks.availability).not.toHaveBeenCalled();
   });
 });

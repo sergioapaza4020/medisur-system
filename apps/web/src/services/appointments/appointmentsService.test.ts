@@ -29,4 +29,30 @@ describe('Appointment transport', () => {
     expect(await appointmentsService.mine(query)).toEqual(page);
     expect(apiClient.get).toHaveBeenCalledWith('/appointments/mine', { params: query });
   });
+  it('uses bounded patient selection and sends only target, schedule and version for reception', async () => {
+    const query = { page: 2, limit: 5, search: 'Ana' };
+    const page = { data: [], meta: { page: 2, limit: 5, total: 0, totalPages: 0 } };
+    vi.mocked(apiClient.get).mockResolvedValue({ data: page });
+    expect(await appointmentsService.patients(query)).toEqual(page);
+    expect(apiClient.get).toHaveBeenCalledWith('/appointments/patients', { params: query });
+    vi.mocked(apiClient.post).mockResolvedValue({ data: { data: { idAppointment: 9 } } });
+    await appointmentsService.createForPatient(
+      {
+        idSchedule: 3,
+        version: 2,
+        idDoctor: 6,
+        idSpecialty: 8,
+        date: '2099-01-01',
+        startTime: '09:00',
+        endTime: '10:00',
+        timeZone: 'America/La_Paz',
+      },
+      7,
+    );
+    expect(apiClient.post).toHaveBeenCalledWith('/appointments/for-patient', {
+      idSchedule: 3,
+      expectedVersion: 2,
+      idPatient: 7,
+    });
+  });
 });

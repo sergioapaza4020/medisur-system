@@ -7,6 +7,7 @@ import { Specialty } from 'src/entities/specialties/specialties.entity';
 import { Role } from 'src/entities/roles/roles.entity';
 import { Permission } from 'src/entities/permissions/permissions.entity';
 import { UserSession } from 'src/entities/user-sessions/user-sessions.entity';
+import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selection-query.dto';
 import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.dto';
 import { SchedulesService } from '../schedules/schedules.service';
 import { AppointmentsService } from './appointments.service';
@@ -118,4 +119,37 @@ describe('Own appointments SQL and projection', () => {
       expect(qb.expressionMap.orderBys['appointment.date']).toBe('ASC');
     },
   );
+  it('limits reception search to active patients before pagination and strips account fields', async () => {
+    const repository = source.getRepository(User);
+    const qb = repository.createQueryBuilder('patient');
+    jest.spyOn(repository, 'createQueryBuilder').mockReturnValue(qb);
+    jest.spyOn(qb, 'getManyAndCount').mockResolvedValue([
+      [
+        {
+          idUser: 9,
+          name: 'Ana',
+          lastname: 'Pérez',
+          ci: '123',
+          email: 'private',
+          createdBy: 4,
+        } as User,
+      ],
+      12,
+    ]);
+    const result = await service.patients(
+      Object.assign(new PatientSelectionQueryDto(), { search: 'An%', page: 2, limit: 5 }),
+    );
+    expect(qb.getQuery()).toContain('"patient"."is_active" = true');
+    expect(qb.getQuery()).toContain('"role"."is_active" = true');
+    expect(qb.getQuery()).toContain('"role"."deleted_at" IS NULL');
+    expect(qb.getQuery()).toContain('"patient"."deleted_at" IS NULL');
+    expect(qb.getParameters()).toMatchObject({ role: 'PATIENT', search: '%An\\%%' });
+    expect(qb.expressionMap.skip).toBe(5);
+    expect(qb.expressionMap.take).toBe(5);
+    expect(result).toEqual({
+      data: [{ idUser: 9, name: 'Ana', lastname: 'Pérez', ci: '123' }],
+      meta: { page: 2, limit: 5, total: 12, totalPages: 3 },
+    });
+    expect(JSON.stringify(result)).not.toMatch(/email|createdBy|password/);
+  });
 });

@@ -15,6 +15,9 @@ import { paginate } from '@common/utils/paginate';
 import { PaginatedResult } from '@common/types/pagination.type';
 import { PatientAppointment } from '@common/types/patient-appointment.type';
 import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.dto';
+import { CreateAdministrativeAppointmentDto } from 'src/dtos/appointments/create-administrative-appointment.dto';
+import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selection-query.dto';
+import { BookingPatient } from '@common/types/booking-patient.type';
 import { SchedulesService } from '../schedules/schedules.service';
 
 @Injectable()
@@ -83,13 +86,38 @@ export class AppointmentsService {
     };
   }
 
-  async create(dto: CreateAppointmentDto, idUser: number) {
+  async patients(query: PatientSelectionQueryDto): Promise<PaginatedResult<BookingPatient>> {
+    const qb = this.dataSource
+      .getRepository(User)
+      .createQueryBuilder('patient')
+      .innerJoin('patient.roles', 'role', 'role.name = :role AND role.isActive = true', {
+        role: 'PATIENT',
+      })
+      .select(['patient.idUser', 'patient.name', 'patient.lastname', 'patient.ci'])
+      .where('patient.isActive = true')
+      .andWhere(
+        '(patient.name ILIKE :search OR patient.lastname ILIKE :search OR patient.ci ILIKE :search)',
+        { search: `%${query.search.replace(/[\\%_]/g, '\\$&')}%` },
+      )
+      .orderBy('patient.idUser', 'ASC');
+    const result = await paginate(qb, query);
+    return {
+      ...result,
+      data: result.data.map(({ idUser, name, lastname, ci }) => ({ idUser, name, lastname, ci })),
+    };
+  }
+
+  create(dto: CreateAppointmentDto, idUser: number) {
+    return this.reserve(dto, idUser, idUser);
+  }
+
+  createForPatient(dto: CreateAdministrativeAppointmentDto, actorId: number) {
+    return this.reserve(dto, dto.idPatient, actorId);
+  }
+
+  private async reserve(dto: CreateAppointmentDto, idPatient: number, actorId: number) {
     try {
       return await this.dataSource.transaction(async (manager) => {
-        const patient = await manager.getRepository(User).findOne({
-          where: { idUser, isActive: true, roles: { name: 'PATIENT', isActive: true } },
-        });
-        if (!patient) throw new ForbiddenException('Se requiere una cuenta de paciente activa');
         const repository = manager.getRepository(Schedule);
         const initial = await repository.findOne({
           where: { idSchedule: dto.idSchedule },
@@ -108,6 +136,23 @@ export class AppointmentsService {
         if (!locked) throw new NotFoundException('Horario no encontrado');
         if (locked.version !== dto.expectedVersion)
           throw new ConflictException('El horario cambió. Consulta nuevamente la disponibilidad');
+        // Revalidate and hold the target account after waiting for the shared doctor lock.
+        const patient = await manager
+          .getRepository(User)
+          .createQueryBuilder('patient')
+          .innerJoin('patient.roles', 'role', 'role.name = :role AND role.isActive = true', {
+            role: 'PATIENT',
+          })
+          .where('patient.idUser = :idPatient AND patient.isActive = true', { idPatient })
+          .setLock('pessimistic_read', undefined, ['patient'])
+          .getOne();
+        if (!patient) {
+          if (actorId === idPatient)
+            throw new ForbiddenException('Se requiere una cuenta de paciente activa');
+          throw new ConflictException(
+            'El paciente seleccionado no existe o ya no tiene una cuenta de paciente activa. Vuelve a buscarlo',
+          );
+        }
         // Recheck eligibility after waiting for locks, using the database clock.
         const schedule = await this.schedules
           .availableQuery(manager)
@@ -131,11 +176,11 @@ export class AppointmentsService {
           startTime: schedule.startTime,
           endTime: schedule.endTime,
           status: AppointmentStatus.RESERVED,
-          createdBy: idUser,
+          createdBy: actorId,
         });
         return {
           idAppointment: saved.idAppointment,
-          idPatient: idUser,
+          idPatient,
           idSchedule: schedule.idSchedule,
           idDoctor: schedule.doctor.idDoctor,
           idSpecialty: specialty.idSpecialty,

@@ -1,6 +1,7 @@
 import { Button, Stack, Typography } from '@mui/material';
 
 import type { AvailabilityBlock } from '@/types/availability';
+import type { BookingPatient } from '@/types/booking-patient';
 import AppointmentBooking from './AppointmentBooking';
 import { displayDate } from './availabilityDates';
 
@@ -8,8 +9,10 @@ export default function AvailabilitySlots({
   date,
   blocks,
   onReserve,
+  bookingFor,
 }: {
   date: string;
+  bookingFor?: BookingPatient;
   blocks: AvailabilityBlock[];
   onReserve?: (success: boolean, message: string) => void;
 }) {
@@ -24,7 +27,12 @@ export default function AvailabilitySlots({
       <Stack direction='row' useFlexGap flexWrap='wrap' gap={1}>
         {blocks.map((block) =>
           onReserve ? (
-            <AppointmentBooking key={`${block.idSchedule}-${block.version}`} block={block} onResult={onReserve} />
+            <AppointmentBooking
+              key={`${block.idSchedule}-${block.version}`}
+              block={block}
+              onResult={onReserve}
+              bookingFor={bookingFor}
+            />
           ) : (
             <Button
               key={`${block.idSchedule}-${block.startTime}-${block.endTime}`}
