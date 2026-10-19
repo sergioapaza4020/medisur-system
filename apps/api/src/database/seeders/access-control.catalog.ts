@@ -30,7 +30,7 @@ export const MEDISUR_PERMISSIONS = {
     'delete',
     'reactivate',
   ],
-  appointment: ['create', 'get-mine'],
+  appointment: ['create', 'get-mine', 'create-for-patient'],
   schedule: ['create', 'get-availability', 'update'],
   session: ['get-all', 'revoke-one', 'revoke-all'],
   specialty: ['get-all', 'get-one-by-id', 'create', 'update', 'delete', 'reactivate'],
@@ -49,6 +49,7 @@ export const MEDISUR_PERMISSION_NAMES = Object.entries(MEDISUR_PERMISSIONS).flat
 );
 
 export const MEDISUR_STAFF_PERMISSION_NAMES = [
+  'appointment.create-for-patient',
   'schedule.get-availability',
   'doctor.create',
   'doctor.get-all',

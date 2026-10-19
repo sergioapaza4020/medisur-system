@@ -8,14 +8,19 @@ import { useAuth } from '@/components/auth/AuthGuard';
 import { schedulesService } from '@/services/schedules/schedulesService';
 import type { AvailabilityBlock } from '@/types/availability';
 import type { DoctorSelection, SpecialtySelection } from '@/types/doctors';
+import type { BookingPatient } from '@/types/booking-patient';
 import DoctorsBySpecialty from '@/views/doctors/DoctorsBySpecialty';
 import AvailabilityCalendar from './AvailabilityCalendar';
 import AvailabilitySlots from './AvailabilitySlots';
 import { boliviaToday, monthDates, moveMonth } from './availabilityDates';
 
-export default function MedicalAvailability() {
+export default function MedicalAvailability({ bookingFor }: { bookingFor?: BookingPatient } = {}) {
   const { hasPermission } = useAuth();
-  const allowed = hasPermission('schedule.get-availability') && hasPermission('doctor.get-by-specialty');
+  const allowed =
+    hasPermission('schedule.get-availability') &&
+    hasPermission('doctor.get-by-specialty') &&
+    (!bookingFor || hasPermission('appointment.create-for-patient'));
+  const canReserve = hasPermission(bookingFor ? 'appointment.create-for-patient' : 'appointment.create');
   const [selected, setSelected] = useState<{ doctor: DoctorSelection; specialty: SpecialtySelection } | null>(null);
   const [month, setMonth] = useState(() => boliviaToday().slice(0, 7));
   const [date, setDate] = useState('');
@@ -95,7 +100,7 @@ export default function MedicalAvailability() {
               <>
                 <Typography>
                   Horarios de Bolivia (America/La_Paz).{' '}
-                  {hasPermission('appointment.create')
+                  {canReserve
                     ? 'Selecciona un horario para reservar el bloque completo.'
                     : 'Los bloques de atención son informativos; esta consulta no reserva una cita.'}
                 </Typography>
@@ -129,8 +134,9 @@ export default function MedicalAvailability() {
                   />
                   {!loading && !current?.error && (
                     <AvailabilitySlots
+                      bookingFor={bookingFor}
                       onReserve={
-                        hasPermission('appointment.create')
+                        canReserve
                           ? (success, message) => {
                               setFeedback({ success, message });
                               setRefresh((value) => value + 1);

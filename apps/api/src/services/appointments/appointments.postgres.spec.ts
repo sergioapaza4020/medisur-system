@@ -10,6 +10,7 @@ import { Specialty } from 'src/entities/specialties/specialties.entity';
 import { Role } from 'src/entities/roles/roles.entity';
 import { Permission } from 'src/entities/permissions/permissions.entity';
 import { UserSession } from 'src/entities/user-sessions/user-sessions.entity';
+import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selection-query.dto';
 import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.dto';
 import { AvailabilityQueryDto } from 'src/dtos/schedules/availability-query.dto';
 import { CreateAppointments1792450000000 } from 'src/database/migrations/1792450000000-CreateAppointments';
@@ -298,5 +299,98 @@ postgres('Appointment booking against PostgreSQL', () => {
       doctor: { name: 'Doctor', lastname: 'Test' },
       specialty: { name: specialty.name },
     });
+  });
+  it('books for a different active patient and records the administrative actor', async () => {
+    const result = await service.createForPatient(
+      { ...dto(), idPatient: patient.idUser },
+      other.idUser,
+    );
+    expect(result.idPatient).toBe(patient.idUser);
+    const stored = await source.getRepository(Appointment).findOneOrFail({
+      where: { idAppointment: result.idAppointment },
+      relations: { patient: true },
+    });
+    expect(stored.patient.idUser).toBe(patient.idUser);
+    expect(stored.createdBy).toBe(other.idUser);
+    expect((await service.mine(other.idUser, new AppointmentsQueryDto())).data).toEqual([]);
+    expect((await availability()).meta.total).toBe(0);
+    await expect(
+      service.createForPatient({ ...dto(), idPatient: patient.idUser }, other.idUser),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+  it('serializes patient and reception requests competing for the same block', async () => {
+    const results = await Promise.allSettled([
+      service.create(dto(), patient.idUser),
+      service.createForPatient({ ...dto(), idPatient: other.idUser }, patient.idUser),
+      service.createForPatient({ ...dto(), idPatient: patient.idUser }, other.idUser),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    for (const result of results)
+      if (result.status === 'rejected') expect(result.reason).toBeInstanceOf(ConflictException);
+    expect(await source.getRepository(Appointment).count()).toBe(1);
+  });
+  it.each(['missing', 'inactive', 'wrong-role', 'inactive-role', 'deleted'])(
+    'rejects an administrative target that becomes %s',
+    async (invalid) => {
+      let idPatient = patient.idUser;
+      if (invalid === 'missing') idPatient = 999999;
+      if (invalid === 'inactive')
+        await source.getRepository(User).update(patient.idUser, { isActive: false });
+      if (invalid === 'wrong-role') idPatient = doctor.user.idUser;
+      if (invalid === 'inactive-role')
+        await source.getRepository(Role).update({ name: 'PATIENT' }, { isActive: false });
+      if (invalid === 'deleted') await source.getRepository(User).softDelete(patient.idUser);
+      await expect(service.createForPatient({ ...dto(), idPatient }, other.idUser)).rejects.toThrow(
+        'paciente',
+      );
+      expect(await source.getRepository(Appointment).count()).toBe(0);
+    },
+  );
+  it.each(['doctor', 'specialty', 'schedule', 'past'])(
+    'applies the same availability rules from reception for invalid %s',
+    async (invalid) => {
+      if (invalid === 'doctor')
+        await source.getRepository(Doctor).update(doctor.idDoctor, { isActive: false });
+      if (invalid === 'specialty')
+        await source.getRepository(Specialty).update(specialty.idSpecialty, { isActive: false });
+      if (invalid === 'schedule')
+        await source.getRepository(Schedule).update(schedule.idSchedule, { isActive: false });
+      if (invalid === 'past')
+        await source.getRepository(Schedule).update(schedule.idSchedule, { date: '2000-01-01' });
+      const current = await source
+        .getRepository(Schedule)
+        .findOneByOrFail({ idSchedule: schedule.idSchedule });
+      await expect(
+        service.createForPatient(
+          {
+            idSchedule: current.idSchedule,
+            expectedVersion: current.version,
+            idPatient: patient.idUser,
+          },
+          other.idUser,
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(await source.getRepository(Appointment).count()).toBe(0);
+    },
+  );
+  it('paginates only active patients with an active profile and exposes minimum identification data', async () => {
+    const query = Object.assign(new PatientSelectionQueryDto(), {
+      search: 'Pat',
+      page: 1,
+      limit: 1,
+    });
+    const result = await service.patients(query);
+    expect(result.meta).toMatchObject({ total: 1, totalPages: 1 });
+    expect(result.data).toEqual([
+      { idUser: patient.idUser, name: patient.name, lastname: patient.lastname, ci: patient.ci },
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/email|password|roles|createdBy|avatar/);
+    expect((await service.patients({ ...query, search: 'Doc' })).data).toEqual([]);
+    expect((await service.patients({ ...query, search: '%at' })).data).toEqual([]);
+    await source.getRepository(User).update(patient.idUser, { isActive: false });
+    expect((await service.patients(query)).meta.total).toBe(0);
+    await source.getRepository(User).update(patient.idUser, { isActive: true });
+    await source.getRepository(Role).update({ name: 'PATIENT' }, { isActive: false });
+    expect((await service.patients(query)).meta.total).toBe(0);
   });
 });

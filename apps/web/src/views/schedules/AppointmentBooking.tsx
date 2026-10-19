@@ -7,13 +7,17 @@ import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Typog
 
 import type { AvailabilityBlock } from '@/types/availability';
 import { appointmentsService } from '@/services/appointments/appointmentsService';
+import type { BookingPatient } from '@/types/booking-patient';
+import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 import { displayDate } from './availabilityDates';
 
 export default function AppointmentBooking({
   block,
   onResult,
+  bookingFor,
 }: {
   block: AvailabilityBlock;
+  bookingFor?: BookingPatient;
   onResult: (success: boolean, message: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -27,7 +31,9 @@ export default function AppointmentBooking({
     setBusy(true);
     setError('');
     try {
-      const appointment = await appointmentsService.create(block);
+      const appointment = bookingFor
+        ? await appointmentsService.createForPatient(block, bookingFor.idUser)
+        : await appointmentsService.create(block);
       setOpen(false);
       onResult(
         true,
@@ -36,7 +42,9 @@ export default function AppointmentBooking({
     } catch (cause) {
       const unavailable = isAxiosError(cause) && [404, 409].includes(cause.response?.status ?? 0);
       const message = unavailable
-        ? 'El horario cambió o ya no está disponible. Selecciona otro horario.'
+        ? bookingFor && isAxiosError(cause) && cause.response?.data?.message
+          ? getApiErrorMessage(cause)
+          : 'El horario cambió o ya no está disponible. Selecciona otro horario.'
         : 'No fue posible confirmar la reserva. Consulta la disponibilidad antes de volver a intentarlo.';
       if (unavailable) {
         setOpen(false);
@@ -70,7 +78,11 @@ export default function AppointmentBooking({
             {displayDate(block.date, { day: 'numeric', month: 'long', year: 'numeric' })}, {block.startTime.slice(0, 5)}
             –{block.endTime.slice(0, 5)} (hora de Bolivia).
           </Typography>
-          <Typography>Se reservará el bloque completo para tu cuenta de paciente.</Typography>
+          <Typography>
+            {bookingFor
+              ? `Reserva administrativa en nombre de ${bookingFor.name} ${bookingFor.lastname}, documento ${bookingFor.ci}.`
+              : 'Se reservará el bloque completo para tu cuenta de paciente.'}
+          </Typography>
           {error && <Alert severity='error'>{error}</Alert>}
         </DialogContent>
         <DialogActions>

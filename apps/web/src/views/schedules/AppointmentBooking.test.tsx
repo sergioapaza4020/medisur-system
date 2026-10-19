@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   states: [] as unknown[],
   buttons: new Map<string, { disabled?: boolean; onClick: () => void }>(),
   create: vi.fn(),
+  createForPatient: vi.fn(),
   inFlight: { current: false },
 }));
 vi.mock('react', async (original) => ({
@@ -39,7 +40,9 @@ vi.mock('@mui/material', () => ({
   Typography: ({ children }: { children: ReactModule.ReactNode }) => <p>{children}</p>,
   Alert: ({ children }: { children: ReactModule.ReactNode }) => <div role='alert'>{children}</div>,
 }));
-vi.mock('@/services/appointments/appointmentsService', () => ({ appointmentsService: { create: mocks.create } }));
+vi.mock('@/services/appointments/appointmentsService', () => ({
+  appointmentsService: { create: mocks.create, createForPatient: mocks.createForPatient },
+}));
 const block = {
   idSchedule: 9,
   version: 2,
@@ -51,9 +54,10 @@ const block = {
   timeZone: 'America/La_Paz' as const,
 };
 const result = vi.fn();
-function render() {
+const patient = { idUser: 9, name: 'Ana', lastname: 'Pérez', ci: '123456' };
+function render(bookingFor?: typeof patient) {
   mocks.index = 0;
-  return renderToStaticMarkup(<AppointmentBooking block={block} onResult={result} />);
+  return renderToStaticMarkup(<AppointmentBooking block={block} onResult={result} bookingFor={bookingFor} />);
 }
 function open() {
   mocks.states[0] = true;
@@ -106,5 +110,30 @@ describe('Appointment confirmation', () => {
     await flush();
     expect(render()).toContain('No fue posible confirmar la reserva');
     expect(result).not.toHaveBeenCalled();
+  });
+  it('confirms explicitly in the selected patient name and uses the administrative endpoint', async () => {
+    mocks.states[0] = true;
+    const html = render(patient);
+    expect(html).toContain('Reserva administrativa en nombre de Ana');
+    expect(html).toContain('123456');
+    expect(html).not.toContain('para tu cuenta');
+    mocks.createForPatient.mockResolvedValue({ idAppointment: 22 });
+    mocks.buttons.get('Confirmar reserva')!.onClick();
+    await flush();
+    expect(mocks.createForPatient).toHaveBeenCalledExactlyOnceWith(block, 9);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(result).toHaveBeenCalledWith(true, expect.stringContaining('Cita #22 reservada'));
+  });
+  it('shows the server explanation when the selected patient is no longer valid', async () => {
+    mocks.states[0] = true;
+    render(patient);
+    mocks.createForPatient.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 409, data: { message: 'El paciente seleccionado ya no está activo' } },
+    });
+    mocks.buttons.get('Confirmar reserva')!.onClick();
+    await flush();
+    expect(result).toHaveBeenCalledWith(false, 'El paciente seleccionado ya no está activo');
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 });
