@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { schedulesService } from './schedulesService';
 import { apiClient } from '../http/axiosClient';
 
-vi.mock('../http/axiosClient', () => ({ apiClient: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('../http/axiosClient', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 beforeEach(() => vi.clearAllMocks());
 describe('Schedule HTTP client', () => {
   it('reuses the pagination contract for own specialties', async () => {
@@ -36,5 +36,25 @@ describe('Schedule HTTP client', () => {
     const failure = new Error('Fecha inválida');
     vi.mocked(apiClient.get).mockRejectedValueOnce(failure);
     await expect(schedulesService.availability(query)).rejects.toBe(failure);
+  });
+  it('lists own schedules with shared pagination and replaces a versioned schedule', async () => {
+    const query = { page: 2, limit: 5 };
+    const page = { data: [], meta: { ...query, total: 0, totalPages: 0 } };
+    vi.mocked(apiClient.get).mockResolvedValue({ data: page });
+    expect(await schedulesService.mine(query)).toEqual(page);
+    expect(apiClient.get).toHaveBeenCalledWith('/schedules/mine', { params: query });
+    await schedulesService.specialties(query, true);
+    expect(apiClient.get).toHaveBeenCalledWith('/schedules/editing-specialties', { params: query });
+    const dto = {
+      idSpecialty: 2,
+      date: '2026-11-02',
+      startTime: '09:00',
+      endTime: '10:00',
+      isActive: false,
+      expectedVersion: 1,
+    };
+    vi.mocked(apiClient.put).mockResolvedValue({ data: { data: { ...dto, version: 2 } } });
+    expect(await schedulesService.update(9, dto)).toMatchObject({ version: 2 });
+    expect(apiClient.put).toHaveBeenCalledWith('/schedules/9', dto);
   });
 });

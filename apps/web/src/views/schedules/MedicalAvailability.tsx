@@ -1,88 +1,83 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
 
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Stack, Typography } from '@mui/material';
 
 import { useAuth } from '@/components/auth/AuthGuard';
-import ListPagination from '@/components/pagination/ListPagination';
 import { schedulesService } from '@/services/schedules/schedulesService';
-import type { AvailabilityPage, AvailabilityQuery } from '@/types/availability';
+import type { AvailabilityBlock } from '@/types/availability';
 import type { DoctorSelection, SpecialtySelection } from '@/types/doctors';
-import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 import DoctorsBySpecialty from '@/views/doctors/DoctorsBySpecialty';
-import tableStyles from '@core/styles/table.module.css';
+import AvailabilityCalendar from './AvailabilityCalendar';
+import AvailabilitySlots from './AvailabilitySlots';
+import { boliviaToday, monthDates, moveMonth } from './availabilityDates';
 
 export default function MedicalAvailability() {
   const { hasPermission } = useAuth();
   const allowed = hasPermission('schedule.get-availability') && hasPermission('doctor.get-by-specialty');
   const [selected, setSelected] = useState<{ doctor: DoctorSelection; specialty: SpecialtySelection } | null>(null);
+  const [month, setMonth] = useState(() => boliviaToday().slice(0, 7));
   const [date, setDate] = useState('');
-  const [query, setQuery] = useState<AvailabilityQuery | null>(null);
-  const [result, setResult] = useState<AvailabilityPage | null>(null);
-  const [completed, setCompleted] = useState<{ query: AvailabilityQuery; refresh: number } | null>(null);
+  const [result, setResult] = useState<{ key: string; blocks: AvailabilityBlock[]; error: boolean } | null>(null);
   const [refresh, setRefresh] = useState(0);
-  const [error, setError] = useState('');
-  const loading = query !== null && (completed?.query !== query || completed?.refresh !== refresh);
+  const today = boliviaToday();
+  const idDoctor = selected?.doctor.idDoctor;
+  const idSpecialty = selected?.specialty.idSpecialty;
+  const key = `${idDoctor}-${idSpecialty}-${month}-${refresh}`;
+  const current = result?.key === key ? result : null;
+  const loading = Boolean(selected && !current);
 
   useEffect(() => {
-    if (!allowed || !query) return;
+    if (!allowed || !idDoctor || !idSpecialty) return;
     let active = true;
-    schedulesService
-      .availability(query)
-      .then((page) => {
-        if (!active) return;
-        setError('');
-        if (query.page > Math.max(1, page.meta.totalPages))
-          setQuery({ ...query, page: Math.max(1, page.meta.totalPages) });
-        else setResult(page);
-      })
-      .catch((failure: unknown) => {
-        if (active) {
-          setResult(null);
-          setError(getApiErrorMessage(failure));
-        }
-      })
-      .finally(() => {
-        if (active) setCompleted({ query, refresh });
-      });
+    const { from, to } = monthDates(month);
+    async function load() {
+      try {
+        const blocks: AvailabilityBlock[] = [];
+        let page = 1;
+        let totalPages = 1;
+        do {
+          const response = await schedulesService.availability({
+            idDoctor: idDoctor!,
+            idSpecialty,
+            from,
+            to,
+            page,
+            limit: 100,
+          });
+          if (!active) return;
+          blocks.push(...response.data);
+          totalPages = response.meta.totalPages;
+          page++;
+        } while (page <= totalPages);
+        setResult({ key, blocks, error: false });
+      } catch {
+        if (active) setResult({ key, blocks: [], error: true });
+      }
+    }
+    // React Strict Mode cleans up the first effect before this microtask runs.
+    void Promise.resolve().then(() => {
+      if (active) void load();
+    });
     return () => {
       active = false;
     };
-  }, [allowed, query, refresh]);
-
-  function consult(event: FormEvent) {
-    event.preventDefault();
-    if (!allowed || !selected || loading) return;
-    if (
-      !/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(date) ||
-      !Number.isFinite(Date.parse(date + 'T00:00:00Z')) ||
-      new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) !== date
-    ) {
-      setError('Selecciona una fecha válida');
-      return;
-    }
-    setError('');
-    setQuery({
-      idDoctor: selected.doctor.idDoctor,
-      idSpecialty: selected.specialty.idSpecialty,
-      date,
-      page: 1,
-      limit: query?.limit ?? 10,
-    });
-  }
+  }, [allowed, idDoctor, idSpecialty, month, key]);
 
   if (!allowed) return <Alert severity='warning'>No tienes permiso para consultar disponibilidad médica.</Alert>;
+  const blocks = current?.blocks ?? [];
+  const dates = new Set(blocks.filter((block) => block.date >= today).map((block) => block.date));
+  const visibleDate = dates.has(date) ? date : '';
   return (
     <Stack spacing={3}>
       <DoctorsBySpecialty
         onSelectDoctor={(doctor, specialty) => {
           if (!hasPermission('schedule.get-availability')) return;
           setSelected(doctor ? { doctor, specialty } : null);
-          setQuery(null);
+          setDate('');
           setResult(null);
-          setError('');
+          setRefresh((value) => value + 1);
         }}
       />
       <Card>
@@ -92,82 +87,53 @@ export default function MedicalAvailability() {
             <Typography>
               {selected
                 ? `${selected.doctor.name} ${selected.doctor.lastname} — ${selected.specialty.name}`
-                : 'Selecciona un médico para consultar sus horarios disponibles.'}
+                : 'Selecciona un médico para consultar su disponibilidad.'}
             </Typography>
-            <Typography>
-              Horarios de Bolivia (America/La_Paz). La consulta muestra bloques de atención; no reserva una cita.
-            </Typography>
-            <Box component='form' onSubmit={consult}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <TextField
-                  required
-                  label='Fecha de atención'
-                  type='date'
-                  value={date}
-                  disabled={!selected || loading}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  onChange={(event) => {
-                    setDate(event.target.value);
-                    setQuery(null);
-                    setResult(null);
-                    setError('');
+            {selected && (
+              <>
+                <Typography>
+                  Horarios de Bolivia (America/La_Paz). Los bloques de atención son informativos; esta consulta no
+                  reserva una cita.
+                </Typography>
+                {loading && <CircularProgress size={24} aria-label='Consultando disponibilidad' />}
+                {current?.error && (
+                  <Alert
+                    severity='error'
+                    action={<Button onClick={() => setRefresh((value) => value + 1)}>Reintentar</Button>}
+                  >
+                    No fue posible consultar la disponibilidad.
+                  </Alert>
+                )}
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) minmax(0, 1fr)' },
+                    gap: 4,
                   }}
-                />
-                <Button type='submit' variant='contained' disabled={!selected || !date || loading}>
-                  Consultar disponibilidad
-                </Button>
-              </Stack>
-            </Box>
-            {loading ? (
-              <CircularProgress aria-label='Consultando disponibilidad' />
-            ) : error ? (
-              <Alert
-                severity='error'
-                action={
-                  query ? <Button onClick={() => setRefresh((value) => value + 1)}>Reintentar</Button> : undefined
-                }
-              >
-                {error}
-              </Alert>
-            ) : (
-              query &&
-              result && (
-                <>
-                  <Typography>Disponibilidad para {query.date}</Typography>
-                  {result.data.length === 0 ? (
-                    <Alert severity='info'>
-                      No hay disponibilidad para el médico, especialidad y fecha seleccionados.
-                    </Alert>
-                  ) : (
-                    <div className='overflow-x-auto'>
-                      <table className={tableStyles.table}>
-                        <thead>
-                          <tr>
-                            <th>Fecha</th>
-                            <th>Inicio</th>
-                            <th>Fin</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {result.data.map((block) => (
-                            <tr key={`${block.idSchedule}-${block.startTime}`}>
-                              <td>{block.date}</td>
-                              <td>{block.startTime.slice(0, 5)}</td>
-                              <td>{block.endTime.slice(0, 5)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  <ListPagination
-                    query={query}
-                    meta={result.meta}
-                    onChange={(pagination) => setQuery({ ...query, ...pagination })}
-                    labelRowsPerPage='Bloques por página'
+                >
+                  <AvailabilityCalendar
+                    month={month}
+                    today={today}
+                    dates={dates}
+                    selectedDate={visibleDate}
+                    loading={loading}
+                    onMonthChange={(delta) => {
+                      setMonth(moveMonth(month, delta));
+                      setDate('');
+                    }}
+                    onSelect={setDate}
                   />
-                </>
-              )
+                  {!loading && !current?.error && (
+                    <AvailabilitySlots
+                      date={visibleDate}
+                      blocks={blocks.filter((block) => block.date === visibleDate)}
+                    />
+                  )}
+                </Box>
+                {!loading && !current?.error && dates.size === 0 && (
+                  <Alert severity='info'>No hay horarios disponibles para este médico durante este mes.</Alert>
+                )}
+              </>
             )}
           </Stack>
         </CardContent>

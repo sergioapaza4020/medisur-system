@@ -1,4 +1,11 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  VersionColumn,
+} from 'typeorm';
 import { BaseEntity } from '@common/entities/base.entity';
 import { Doctor } from '../doctors/doctors.entity';
 import { Specialty } from '../specialties/specialties.entity';
@@ -15,6 +22,9 @@ export class Schedule extends BaseEntity {
   @ManyToOne(() => Specialty, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'id_specialty' })
   specialty: Specialty;
+
+  @VersionColumn({ type: 'integer' })
+  version: number;
 
   @Column({ type: 'date' })
   date: string;

@@ -13,7 +13,13 @@ describe('Schedule HTTP authorization and input validation', () => {
   let app: INestApplication;
   let server: Server;
   let permissions: string[];
-  const service = { create: jest.fn(), specialties: jest.fn(), availability: jest.fn() };
+  const service = {
+    create: jest.fn(),
+    specialties: jest.fn(),
+    availability: jest.fn(),
+    update: jest.fn(),
+    mine: jest.fn(),
+  };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [SchedulesController],
@@ -104,6 +110,9 @@ describe('Schedule HTTP authorization and input validation', () => {
   });
   it.each([
     'idDoctor=3',
+    'idDoctor=3&from=2026-11-01',
+    'idDoctor=3&to=2026-11-30',
+    'idDoctor=3&from=2026-02-30&to=2026-03-01',
     'idDoctor=3&date=2026-02-30',
     'idDoctor=3&date=not-a-date',
     'idDoctor=3&date=0000-01-01',
@@ -119,5 +128,77 @@ describe('Schedule HTTP authorization and input validation', () => {
       .get('/schedules/availability?' + query)
       .expect(400);
     expect(service.availability).not.toHaveBeenCalled();
+  });
+  it('accepts a monthly range with the existing permission and pagination', async () => {
+    permissions = ['schedule.get-availability'];
+    await request(server)
+      .get(
+        '/schedules/availability?idDoctor=3&idSpecialty=2&from=2026-11-01&to=2026-11-30&limit=100',
+      )
+      .expect(200);
+    expect(service.availability).toHaveBeenCalledWith(
+      expect.objectContaining({ from: '2026-11-01', to: '2026-11-30', limit: 100 }),
+    );
+  });
+  it('protects modification and own listings independently of registration', async () => {
+    permissions = ['schedule.create'];
+    await request(server).get('/schedules/mine').expect(403);
+    await request(server).get('/schedules/editing-specialties').expect(403);
+    await request(server).put('/schedules/9').send({}).expect(403);
+    expect(service.update).not.toHaveBeenCalled();
+    permissions = ['schedule.update'];
+    await request(server).get('/schedules/mine?page=2&limit=5').expect(200);
+    expect(service.mine).toHaveBeenCalledWith(7, expect.objectContaining({ page: 2, limit: 5 }));
+    await request(server).get('/schedules/editing-specialties').expect(200);
+  });
+  it('passes only validated replacement fields and the session identity', async () => {
+    permissions = ['schedule.update'];
+    await request(server)
+      .put('/schedules/9')
+      .send({
+        idSpecialty: 2,
+        date: '2026-11-02',
+        startTime: '09:00',
+        endTime: '10:00',
+        isActive: false,
+        expectedVersion: 1,
+        idDoctor: 999,
+        createdBy: 999,
+      })
+      .expect(200);
+    expect(service.update).toHaveBeenCalledWith(
+      9,
+      {
+        idSpecialty: 2,
+        date: '2026-11-02',
+        startTime: '09:00',
+        endTime: '10:00',
+        isActive: false,
+        expectedVersion: 1,
+      },
+      7,
+    );
+  });
+  it.each([
+    { date: '2026-02-30' },
+    { startTime: '24:00' },
+    { expectedVersion: 0 },
+    { isActive: 'false' },
+    { idSpecialty: 0 },
+  ])('rejects invalid schedule replacements: %j', async (invalid) => {
+    permissions = ['schedule.update'];
+    await request(server)
+      .put('/schedules/9')
+      .send({
+        idSpecialty: 2,
+        date: '2026-11-02',
+        startTime: '09:00',
+        endTime: '10:00',
+        isActive: true,
+        expectedVersion: 1,
+        ...invalid,
+      })
+      .expect(400);
+    expect(service.update).not.toHaveBeenCalled();
   });
 });
