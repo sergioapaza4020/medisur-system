@@ -71,6 +71,11 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
             Reservar desde recepción
           </MenuItem>
         )}
+        {hasPermission('appointment.get-agenda') && (
+          <MenuItem href='/dashboard/appointments/agenda' icon={<i className='ri-calendar-todo-line' />}>
+            Mi agenda médica
+          </MenuItem>
+        )}
         {hasPermission('appointment.get-mine') && (
           <MenuItem href='/dashboard/appointments' icon={<i className='ri-calendar-event-line' />}>
             Mis citas

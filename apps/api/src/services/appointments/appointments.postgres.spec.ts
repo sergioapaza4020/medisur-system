@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
-import { Appointment } from 'src/entities/appointments/appointment.entity';
+import { Appointment, AppointmentStatus } from 'src/entities/appointments/appointment.entity';
 import { Schedule } from 'src/entities/schedules/schedule.entity';
 import { ScheduleHistory } from 'src/entities/schedules/schedule-history.entity';
 import { Doctor } from 'src/entities/doctors/doctors.entity';
@@ -11,6 +11,7 @@ import { Role } from 'src/entities/roles/roles.entity';
 import { Permission } from 'src/entities/permissions/permissions.entity';
 import { UserSession } from 'src/entities/user-sessions/user-sessions.entity';
 import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selection-query.dto';
+import { DoctorAgendaQueryDto } from 'src/dtos/appointments/doctor-agenda-query.dto';
 import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.dto';
 import { AvailabilityQueryDto } from 'src/dtos/schedules/availability-query.dto';
 import { CreateAppointments1792450000000 } from 'src/database/migrations/1792450000000-CreateAppointments';
@@ -393,4 +394,92 @@ postgres('Appointment booking against PostgreSQL', () => {
     await source.getRepository(Role).update({ name: 'PATIENT' }, { isActive: false });
     expect((await service.patients(query)).meta.total).toBe(0);
   });
+  it('isolates doctor agendas, filters dates/statuses and counts only the authenticated doctor appointments', async () => {
+    const own = await service.create(dto(), patient.idUser);
+    const doctorRole = await source.getRepository(Role).findOneByOrFail({ name: 'DOCTOR' });
+    await source.getRepository(User).save({ ...other, roles: [doctorRole] });
+    const secondDoctor = await source
+      .getRepository(Doctor)
+      .save({ user: other, specialties: [specialty] });
+    const foreignSchedule = await source
+      .getRepository(Schedule)
+      .save({ doctor: secondDoctor, specialty, date, startTime: '09:00', endTime: '10:00' });
+    await service.create(
+      { idSchedule: foreignSchedule.idSchedule, expectedVersion: foreignSchedule.version },
+      patient.idUser,
+    );
+    const secondSchedule = await source
+      .getRepository(Schedule)
+      .save({ doctor, specialty, date: '2099-11-03', startTime: '09:00', endTime: '10:00' });
+    const changed = await service.create(
+      { idSchedule: secondSchedule.idSchedule, expectedVersion: secondSchedule.version },
+      patient.idUser,
+    );
+    await source
+      .getRepository(Appointment)
+      .update(changed.idAppointment, { status: AppointmentStatus.CANCELLED });
+    const query = (filters: Partial<DoctorAgendaQueryDto>) =>
+      Object.assign(new DoctorAgendaQueryDto(), filters);
+    const day = await service.agenda(doctor.user.idUser, query({ date }));
+    expect(day.meta.total).toBe(1);
+    expect(day.data.map((row) => row.idAppointment)).toEqual([own.idAppointment]);
+    expect(day.data[0].patient).toEqual({
+      name: patient.name,
+      lastname: patient.lastname,
+      ci: patient.ci,
+    });
+    const range = await service.agenda(
+      doctor.user.idUser,
+      query({ from: date, to: '2099-11-03', limit: 1, page: 2 }),
+    );
+    expect(range.meta).toMatchObject({ total: 2, totalPages: 2 });
+    expect(range.data[0]).toMatchObject({
+      idAppointment: changed.idAppointment,
+      status: 'CANCELLED',
+    });
+    const filtered = await service.agenda(
+      doctor.user.idUser,
+      query({ from: date, to: '2099-11-03', status: AppointmentStatus.CANCELLED }),
+    );
+    expect(filtered.data.map((row) => row.idAppointment)).toEqual([changed.idAppointment]);
+    await source
+      .getRepository(Appointment)
+      .update(changed.idAppointment, { status: AppointmentStatus.RESCHEDULED });
+    expect(
+      (
+        await service.agenda(
+          doctor.user.idUser,
+          query({ from: date, to: '2099-11-03', status: AppointmentStatus.RESCHEDULED }),
+        )
+      ).meta.total,
+    ).toBe(1);
+    expect((await service.agenda(secondDoctor.user.idUser, query({ date }))).meta.total).toBe(1);
+    expect((await service.agenda(doctor.user.idUser, query({ date: '2099-11-04' }))).data).toEqual(
+      [],
+    );
+    await source.getRepository(User).softDelete(patient.idUser);
+    expect((await service.agenda(doctor.user.idUser, query({ date }))).data[0].patient.name).toBe(
+      patient.name,
+    );
+    await source.getRepository(Appointment).softDelete(own.idAppointment);
+    expect((await service.agenda(doctor.user.idUser, query({ date }))).meta.total).toBe(0);
+  });
+  it.each(['missing', 'inactive-doctor', 'inactive-user', 'inactive-role', 'deleted-doctor'])(
+    'rejects agenda access with %s doctor profile',
+    async (invalid) => {
+      let idUser = doctor.user.idUser;
+      if (invalid === 'missing') idUser = patient.idUser;
+      if (invalid === 'inactive-doctor')
+        await source.getRepository(Doctor).update(doctor.idDoctor, { isActive: false });
+      if (invalid === 'inactive-user')
+        await source.getRepository(User).update(idUser, { isActive: false });
+      if (invalid === 'inactive-role')
+        await source.getRepository(Role).update({ name: 'DOCTOR' }, { isActive: false });
+      if (invalid === 'deleted-doctor')
+        await source.getRepository(Doctor).softDelete(doctor.idDoctor);
+      await expect(
+        service.agenda(idUser, Object.assign(new DoctorAgendaQueryDto(), { date })),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    },
+  );
 });
