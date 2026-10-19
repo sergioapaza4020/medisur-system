@@ -41,6 +41,7 @@ describe('Derived medical availability', () => {
       [
         {
           idSchedule: 9,
+          version: 1,
           doctor: { idDoctor: 3 },
           specialty: { idSpecialty: 2 },
           date: '2026-11-02',
@@ -58,6 +59,7 @@ describe('Derived medical availability', () => {
       data: [
         {
           idSchedule: 9,
+          version: 1,
           idDoctor: 3,
           idSpecialty: 2,
           date: '2026-11-02',
@@ -74,6 +76,7 @@ describe('Derived medical availability', () => {
       expect(sql).toContain(`"${alias}"."deleted_at" IS NULL`);
     }
     expect(sql).toContain('"assignment"."id_specialty" = "specialty"."id_specialty"');
+    expect(sql).toContain('NOT EXISTS (SELECT 1 FROM appointments');
     expect(sql).toContain('"schedule"."start_time" < "schedule"."end_time"');
     expect(sql).toContain('CURRENT_TIMESTAMP AT TIME ZONE :timeZone');
     expect(sql).toContain('"doctor"."id_doctor" = :idDoctor');
@@ -90,6 +93,7 @@ describe('Derived medical availability', () => {
     expect(qb.expressionMap.take).toBe(5);
     expect(qb.expressionMap.selects.map(({ selection }) => selection)).toEqual([
       'schedule.idSchedule',
+      'schedule.version',
       'schedule.date',
       'schedule.startTime',
       'schedule.endTime',
@@ -158,6 +162,7 @@ describe('Derived medical availability', () => {
       [
         {
           idSchedule: 9,
+          version: 1,
           doctor: { idDoctor: 3 },
           specialty: { idSpecialty: 2, name: 'Cardiología' },
           date: '2026-11-02',

@@ -15,6 +15,7 @@ import { databaseConfig } from './core/config/database/database.config';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
 import { DoctorsModule } from './modules/doctors/doctors.module';
 
+import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
 
 @Module({
@@ -34,6 +35,7 @@ import { SchedulesModule } from './modules/schedules/schedules.module';
     SpecialtiesModule,
     DoctorsModule,
     SchedulesModule,
+    AppointmentsModule,
   ],
   controllers: [AppController],
   providers: [

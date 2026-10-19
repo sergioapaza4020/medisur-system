@@ -21,6 +21,7 @@ export default function MedicalAvailability() {
   const [date, setDate] = useState('');
   const [result, setResult] = useState<{ key: string; blocks: AvailabilityBlock[]; error: boolean } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [feedback, setFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const today = boliviaToday();
   const idDoctor = selected?.doctor.idDoctor;
   const idSpecialty = selected?.specialty.idSpecialty;
@@ -80,6 +81,7 @@ export default function MedicalAvailability() {
           setRefresh((value) => value + 1);
         }}
       />
+      {feedback && <Alert severity={feedback.success ? 'success' : 'error'}>{feedback.message}</Alert>}
       <Card>
         <CardContent>
           <Stack spacing={3}>
@@ -92,8 +94,10 @@ export default function MedicalAvailability() {
             {selected && (
               <>
                 <Typography>
-                  Horarios de Bolivia (America/La_Paz). Los bloques de atención son informativos; esta consulta no
-                  reserva una cita.
+                  Horarios de Bolivia (America/La_Paz).{' '}
+                  {hasPermission('appointment.create')
+                    ? 'Selecciona un horario para reservar el bloque completo.'
+                    : 'Los bloques de atención son informativos; esta consulta no reserva una cita.'}
                 </Typography>
                 {loading && <CircularProgress size={24} aria-label='Consultando disponibilidad' />}
                 {current?.error && (
@@ -125,6 +129,14 @@ export default function MedicalAvailability() {
                   />
                   {!loading && !current?.error && (
                     <AvailabilitySlots
+                      onReserve={
+                        hasPermission('appointment.create')
+                          ? (success, message) => {
+                              setFeedback({ success, message });
+                              setRefresh((value) => value + 1);
+                            }
+                          : undefined
+                      }
                       date={visibleDate}
                       blocks={blocks.filter((block) => block.date === visibleDate)}
                     />
