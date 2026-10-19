@@ -24,7 +24,7 @@ describe('Appointment creation HTTP boundary', () => {
     roles: ['PATIENT'],
     permissions: ['appointment.create'],
   };
-  const service = { create: jest.fn() };
+  const service = { create: jest.fn(), mine: jest.fn() };
   beforeAll(async () => {
     previous = process.env.JWT_ACCESS_SECRET;
     process.env.JWT_ACCESS_SECRET = 'booking-http-test';
@@ -48,6 +48,10 @@ describe('Appointment creation HTTP boundary', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     session.permissions = ['appointment.create'];
+    service.mine.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
     service.create.mockResolvedValue({ idAppointment: 1, status: 'RESERVED' });
   });
   afterAll(async () => {
@@ -101,5 +105,44 @@ describe('Appointment creation HTTP boundary', () => {
       status: true,
       data: { idAppointment: 1, status: 'RESERVED' },
     });
+  });
+  it('requires authentication and its own read permission for mine', async () => {
+    await request(server).get('/appointments/mine').expect(401);
+    await request(server).get('/appointments/mine').auth(token, { type: 'bearer' }).expect(403);
+    expect(service.mine).not.toHaveBeenCalled();
+  });
+  it('ignores forged patient identifiers and passes validated filters with session identity', async () => {
+    session.permissions = ['appointment.get-mine'];
+    const response = await request(server)
+      .get(
+        '/appointments/mine?idPatient=999&idUser=999&period=past&status=RESERVED&date=2026-01-01&page=2&limit=5',
+      )
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.mine).toHaveBeenCalledWith(7, {
+      period: 'past',
+      status: 'RESERVED',
+      date: '2026-01-01',
+      page: 2,
+      limit: 5,
+    });
+    expect(response.body).toMatchObject({ data: [], meta: { total: 0 } });
+    await request(server).get('/appointments/mine/999').auth(token, { type: 'bearer' }).expect(404);
+  });
+  it.each([
+    'page=0',
+    'limit=101',
+    'period=other',
+    'status=unknown',
+    'date=2026-02-30',
+    'date=0000-01-01',
+    'date=2026-01-01T10:00:00Z',
+  ])('validates list query %s', async (query) => {
+    session.permissions = ['appointment.get-mine'];
+    await request(server)
+      .get(`/appointments/mine?${query}`)
+      .auth(token, { type: 'bearer' })
+      .expect(400);
+    expect(service.mine).not.toHaveBeenCalled();
   });
 });

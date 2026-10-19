@@ -11,6 +11,10 @@ import { Schedule } from 'src/entities/schedules/schedule.entity';
 import { Specialty } from 'src/entities/specialties/specialties.entity';
 import { Appointment, AppointmentStatus } from 'src/entities/appointments/appointment.entity';
 import { CreateAppointmentDto } from 'src/dtos/appointments/create-appointment.dto';
+import { paginate } from '@common/utils/paginate';
+import { PaginatedResult } from '@common/types/pagination.type';
+import { PatientAppointment } from '@common/types/patient-appointment.type';
+import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.dto';
 import { SchedulesService } from '../schedules/schedules.service';
 
 @Injectable()
@@ -19,6 +23,65 @@ export class AppointmentsService {
     private readonly dataSource: DataSource,
     private readonly schedules: SchedulesService,
   ) {}
+
+  async mine(
+    idUser: number,
+    query: AppointmentsQueryDto,
+  ): Promise<PaginatedResult<PatientAppointment>> {
+    // Preserve historical names even when related profiles have been deactivated/deleted.
+    // The patient predicate is mandatory and never comes from query parameters.
+    const qb = this.dataSource
+      .getRepository(Appointment)
+      .createQueryBuilder('appointment')
+      .withDeleted()
+      .leftJoinAndSelect('appointment.doctor', 'doctor')
+      .leftJoinAndSelect('doctor.user', 'doctorUser')
+      .leftJoinAndSelect('appointment.specialty', 'specialty')
+      .select([
+        'appointment.idAppointment',
+        'appointment.date',
+        'appointment.startTime',
+        'appointment.endTime',
+        'appointment.status',
+        'doctor.idDoctor',
+        'doctorUser.idUser',
+        'doctorUser.name',
+        'doctorUser.lastname',
+        'specialty.idSpecialty',
+        'specialty.name',
+      ])
+      .where('appointment.id_patient = :idUser', { idUser })
+      .andWhere('appointment.deletedAt IS NULL');
+    if (query.period !== 'all')
+      qb.andWhere(
+        `(appointment.date + appointment.startTime) ${query.period === 'past' ? '<' : '>='} (CURRENT_TIMESTAMP AT TIME ZONE :timeZone)`,
+        { timeZone: 'America/La_Paz' },
+      );
+    if (query.status !== undefined)
+      qb.andWhere('appointment.status = :status', { status: query.status });
+    if (query.date !== undefined) qb.andWhere('appointment.date = :date', { date: query.date });
+    const direction = query.period === 'past' ? 'DESC' : 'ASC';
+    qb.orderBy('appointment.date', direction)
+      .addOrderBy('appointment.startTime', direction)
+      .addOrderBy('appointment.idAppointment', direction);
+    const result = await paginate(qb, query);
+    return {
+      ...result,
+      data: result.data.map((appointment) => ({
+        idAppointment: appointment.idAppointment,
+        doctor: {
+          name: appointment.doctor?.user?.name ?? 'Médico',
+          lastname: appointment.doctor?.user?.lastname ?? '',
+        },
+        specialty: { name: appointment.specialty?.name ?? 'Especialidad no disponible' },
+        date: appointment.date,
+        startTime: appointment.startTime,
+        endTime: appointment.endTime,
+        status: appointment.status,
+        timeZone: 'America/La_Paz',
+      })),
+    };
+  }
 
   async create(dto: CreateAppointmentDto, idUser: number) {
     try {
