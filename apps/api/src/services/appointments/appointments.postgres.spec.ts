@@ -16,6 +16,12 @@ import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.d
 import { AvailabilityQueryDto } from 'src/dtos/schedules/availability-query.dto';
 import { AppointmentCancellation1792540000000 } from 'src/database/migrations/1792540000000-AppointmentCancellation';
 import { DoctorAppointmentCancellation1792630000000 } from 'src/database/migrations/1792630000000-DoctorAppointmentCancellation';
+import {
+  ReschedulingProposal,
+  ProposalStatus,
+} from 'src/entities/appointments/rescheduling-proposal.entity';
+import { ReschedulingProposals1792710000000 } from 'src/database/migrations/1792710000000-ReschedulingProposals';
+import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
 import { CreateAppointments1792450000000 } from 'src/database/migrations/1792450000000-CreateAppointments';
 import { SchedulesService } from '../schedules/schedules.service';
 import { AppointmentsService } from './appointments.service';
@@ -47,6 +53,7 @@ postgres('Appointment booking against PostgreSQL', () => {
       extra: { options: `-c search_path=${schema},public`, max: 12 },
       entities: [
         Appointment,
+        ReschedulingProposal,
         Schedule,
         ScheduleHistory,
         Doctor,
@@ -59,11 +66,13 @@ postgres('Appointment booking against PostgreSQL', () => {
       synchronize: true,
     }).initialize();
     // Exercise the actual production migration rather than relying on synchronize for appointments.
+    await source.query(`DROP TABLE "${schema}".rescheduling_proposals`);
     await source.query(`DROP TABLE "${schema}".appointments`);
     const runner = source.createQueryRunner();
     await new CreateAppointments1792450000000().up(runner);
     await new AppointmentCancellation1792540000000().up(runner);
     await new DoctorAppointmentCancellation1792630000000().up(runner);
+    await new ReschedulingProposals1792710000000().up(runner);
     await runner.release();
     schedules = new SchedulesService(source);
     service = new AppointmentsService(source, schedules);
@@ -867,6 +876,206 @@ postgres('Appointment booking against PostgreSQL', () => {
           ? ['Urgencia', 'Otro motivo'].includes(stored.cancellationReason!)
           : stored.cancellationReason === null,
       ).toBe(true);
+    });
+  });
+  describe('Rescheduling proposals', () => {
+    async function fixture() {
+      const booked = await service.create(dto(), patient.idUser);
+      await service.cancelAsDoctor(booked.idAppointment, doctor.user.idUser, 'Urgencia');
+      const target = await source
+        .getRepository(Schedule)
+        .save({ doctor, specialty, date: '2099-11-03', startTime: '11:00', endTime: '12:00' });
+      return {
+        booked,
+        target,
+        proposalDto: { idSchedule: target.idSchedule, expectedVersion: target.version },
+      };
+    }
+    it('creates a pending linked alternative without replacing the cancelled original or reserving its target', async () => {
+      const { booked, target, proposalDto } = await fixture();
+      const result = await service.proposeRescheduling(
+        booked.idAppointment,
+        doctor.user.idUser,
+        proposalDto,
+      );
+      expect(result).toMatchObject({
+        originalDate: date,
+        originalStartTime: '09:00:00',
+        originalEndTime: '10:00:00',
+        date: '2099-11-03',
+        startTime: '11:00:00',
+        endTime: '12:00:00',
+        status: 'PENDING',
+      });
+      const stored = await source.getRepository(ReschedulingProposal).findOneOrFail({
+        where: { idProposal: result.idProposal },
+        relations: { appointment: true, schedule: true },
+      });
+      expect(stored).toMatchObject({
+        createdBy: doctor.user.idUser,
+        scheduleVersion: target.version,
+        appointment: { idAppointment: booked.idAppointment, date, status: 'CANCELLED' },
+        schedule: { idSchedule: target.idSchedule },
+      });
+      expect(
+        (
+          await service.patientProposals(
+            booked.idAppointment,
+            patient.idUser,
+            new PaginationQueryDto(),
+          )
+        ).data,
+      ).toEqual([result]);
+      await expect(service.create(proposalDto, other.idUser)).resolves.toMatchObject({
+        status: 'RESERVED',
+      });
+    });
+    it('isolates both doctor operations and patient consultation', async () => {
+      const { booked, proposalDto } = await fixture();
+      const role = await source.getRepository(Role).findOneByOrFail({ name: 'DOCTOR' });
+      const user = await source.getRepository(User).save({
+        name: 'Otra',
+        lastname: 'Doctora',
+        email: 'second-proposal@example.test',
+        ci: '999',
+        password: 'unused',
+        roles: [role],
+      });
+      await source.getRepository(Doctor).save({ user, specialties: [specialty] });
+      await expect(
+        service.proposeRescheduling(booked.idAppointment, user.idUser, proposalDto),
+      ).rejects.toThrow('Cita propia no encontrada');
+      await expect(
+        service.reschedulingAvailability(booked.idAppointment, user.idUser, {
+          page: 1,
+          limit: 10,
+          date: '2099-11-03',
+        }),
+      ).rejects.toThrow('Cita propia no encontrada');
+      await expect(
+        service.patientProposals(booked.idAppointment, other.idUser, new PaginationQueryDto()),
+      ).rejects.toThrow('Cita propia no encontrada');
+      await expect(
+        service.proposeRescheduling(booked.idAppointment, patient.idUser, proposalDto),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(await source.getRepository(ReschedulingProposal).count()).toBe(0);
+    });
+    it.each(['RESERVED', 'RESCHEDULED', 'COMPLETED'])(
+      'rejects incompatible original state %s',
+      async (status) => {
+        const { booked, proposalDto } = await fixture();
+        await source.getRepository(Appointment).update(booked.idAppointment, {
+          cancellationSource: null,
+          status: status as AppointmentStatus,
+        });
+        await expect(
+          service.proposeRescheduling(booked.idAppointment, doctor.user.idUser, proposalDto),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(await source.getRepository(ReschedulingProposal).count()).toBe(0);
+      },
+    );
+    it.each([
+      'missing',
+      'inactive',
+      'occupied',
+      'past',
+      'stale',
+      'other-specialty',
+      'same-original',
+      'inactive-doctor',
+    ])('rejects invalid target: %s', async (invalid) => {
+      const { booked, target, proposalDto } = await fixture();
+      if (invalid === 'missing') proposalDto.idSchedule = 99999;
+      if (invalid === 'inactive')
+        await source.getRepository(Schedule).update(target.idSchedule, { isActive: false });
+      if (invalid === 'occupied') await service.create(proposalDto, other.idUser);
+      if (invalid === 'past')
+        await source.getRepository(Schedule).update(target.idSchedule, { date: '2000-01-01' });
+      if (invalid === 'stale') proposalDto.expectedVersion = 999;
+      if (invalid === 'same-original') {
+        proposalDto.idSchedule = schedule.idSchedule;
+        proposalDto.expectedVersion = schedule.version;
+      }
+      if (invalid === 'inactive-doctor')
+        await source.getRepository(Doctor).update(doctor.idDoctor, { isActive: false });
+      if (invalid === 'other-specialty') {
+        const another = await source.getRepository(Specialty).save({ name: 'Otra especialidad' });
+        await source
+          .getRepository(Doctor)
+          .createQueryBuilder()
+          .relation(Doctor, 'specialties')
+          .of(doctor)
+          .add(another);
+        await source.getRepository(Schedule).update(target.idSchedule, { specialty: another });
+        const changed = await source
+          .getRepository(Schedule)
+          .findOneByOrFail({ idSchedule: target.idSchedule });
+        proposalDto.expectedVersion = changed.version;
+      }
+      await expect(
+        service.proposeRescheduling(booked.idAppointment, doctor.user.idUser, proposalDto),
+      ).rejects.toThrow();
+      expect(await source.getRepository(ReschedulingProposal).count()).toBe(0);
+    });
+    it('reuses scoped availability and pagination without leaking blocks of other specialties', async () => {
+      const { booked, target } = await fixture();
+      const page = await service.reschedulingAvailability(
+        booked.idAppointment,
+        doctor.user.idUser,
+        { page: 1, limit: 1, date: '2099-11-03' },
+      );
+      expect(page).toMatchObject({ meta: { total: 1, page: 1, limit: 1 } });
+      expect(page.data[0].idSchedule).toBe(target.idSchedule);
+    });
+    it('serializes duplicate proposals and retains a single pending audited alternative', async () => {
+      const { booked, proposalDto } = await fixture();
+      const results = await Promise.allSettled(
+        Array.from({ length: 5 }, () =>
+          service.proposeRescheduling(booked.idAppointment, doctor.user.idUser, proposalDto),
+        ),
+      );
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(results.filter((result) => result.status === 'rejected')).toHaveLength(4);
+      expect(await source.getRepository(ReschedulingProposal).count()).toBe(1);
+    });
+    it('keeps snapshots when schedules change and paginates proposal history', async () => {
+      const { booked, target, proposalDto } = await fixture();
+      const first = await service.proposeRescheduling(
+        booked.idAppointment,
+        doctor.user.idUser,
+        proposalDto,
+      );
+      await source
+        .getRepository(ReschedulingProposal)
+        .update(first.idProposal, { status: ProposalStatus.REJECTED });
+      await service.proposeRescheduling(booked.idAppointment, doctor.user.idUser, proposalDto);
+      await source
+        .getRepository(Schedule)
+        .update(target.idSchedule, { startTime: '13:00', endTime: '14:00' });
+      const page = await service.patientProposals(booked.idAppointment, patient.idUser, {
+        page: 2,
+        limit: 1,
+      });
+      expect(page.meta).toEqual({ page: 2, limit: 1, total: 2, totalPages: 2 });
+      expect(page.data[0]).toMatchObject({
+        idProposal: first.idProposal,
+        status: 'REJECTED',
+        originalDate: date,
+        startTime: '11:00:00',
+      });
+      expect(Object.keys(page.data[0]).sort()).toEqual(
+        [
+          'idProposal',
+          'originalDate',
+          'originalStartTime',
+          'originalEndTime',
+          'date',
+          'startTime',
+          'endTime',
+          'status',
+          'timeZone',
+        ].sort(),
+      );
     });
   });
 });

@@ -26,6 +26,9 @@ describe('Appointment creation HTTP boundary', () => {
   };
   const service = {
     create: jest.fn(),
+    proposeRescheduling: jest.fn(),
+    reschedulingAvailability: jest.fn(),
+    patientProposals: jest.fn(),
     cancelMine: jest.fn(),
     cancelAsDoctor: jest.fn(),
     agenda: jest.fn(),
@@ -377,6 +380,109 @@ describe('Appointment creation HTTP boundary', () => {
       .patch('/appointments/invalid/cancel-as-doctor')
       .auth(token, { type: 'bearer' })
       .send({ reason: 'Urgencia' })
+      .expect(400);
+  });
+  it('requires separate proposal permission and authentication', async () => {
+    await request(server)
+      .post('/appointments/9/rescheduling-proposals')
+      .send({ idSchedule: 2, expectedVersion: 1 })
+      .expect(401);
+    session.permissions = ['appointment.get-agenda', 'appointment.cancel-as-doctor'];
+    await request(server)
+      .post('/appointments/9/rescheduling-proposals')
+      .auth(token, { type: 'bearer' })
+      .send({ idSchedule: 2, expectedVersion: 1 })
+      .expect(403);
+    await request(server)
+      .get('/appointments/9/rescheduling-availability?date=2099-11-03')
+      .auth(token, { type: 'bearer' })
+      .expect(403);
+    expect(service.proposeRescheduling).not.toHaveBeenCalled();
+  });
+  it('creates proposals using only authenticated actor and validated schedule/version', async () => {
+    session.permissions = ['appointment.propose-rescheduling'];
+    service.proposeRescheduling.mockResolvedValue({ idProposal: 1, status: 'PENDING' });
+    await request(server)
+      .post('/appointments/9/rescheduling-proposals')
+      .auth(token, { type: 'bearer' })
+      .send({
+        idSchedule: 2,
+        expectedVersion: 1,
+        idDoctor: 99,
+        idPatient: 88,
+        status: 'ACCEPTED',
+        date: '2000-01-01',
+      })
+      .expect(201);
+    expect(service.proposeRescheduling).toHaveBeenCalledWith(
+      9,
+      7,
+      expect.objectContaining({ idSchedule: 2, expectedVersion: 1 }),
+    );
+    expect(service.proposeRescheduling.mock.calls).toEqual([
+      [9, 7, expect.not.objectContaining({ idDoctor: 99 })],
+    ]);
+  });
+  it.each([
+    {},
+    { idSchedule: -1, expectedVersion: 1 },
+    { idSchedule: 1 },
+    { idSchedule: 'invalid', expectedVersion: 1 },
+  ])('validates proposal payload %j', async (body) => {
+    session.permissions = ['appointment.propose-rescheduling'];
+    await request(server)
+      .post('/appointments/9/rescheduling-proposals')
+      .auth(token, { type: 'bearer' })
+      .send(body)
+      .expect(400);
+    expect(service.proposeRescheduling).not.toHaveBeenCalled();
+  });
+  it('validates shared availability dates and pagination and discards spoofed scope', async () => {
+    session.permissions = ['appointment.propose-rescheduling'];
+    service.reschedulingAvailability.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
+    for (const query of ['date=2099-02-30', 'date=2099-11-03&limit=101', 'date=bad', ''])
+      await request(server)
+        .get(`/appointments/9/rescheduling-availability?${query}`)
+        .auth(token, { type: 'bearer' })
+        .expect(400);
+    await request(server)
+      .get('/appointments/9/rescheduling-availability?date=2099-11-03&idDoctor=99&idSpecialty=88')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.reschedulingAvailability).toHaveBeenCalledWith(
+      9,
+      7,
+      expect.objectContaining({ date: '2099-11-03', page: 1, limit: 10 }),
+    );
+    expect(service.reschedulingAvailability.mock.calls).toEqual([
+      [9, 7, expect.not.objectContaining({ idDoctor: 99 })],
+    ]);
+  });
+  it('scopes proposal consultation to authenticated patient and reuses pagination validation', async () => {
+    service.patientProposals.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
+    await request(server)
+      .get('/appointments/9/rescheduling-proposals')
+      .auth(token, { type: 'bearer' })
+      .expect(403);
+    session.permissions = ['appointment.get-mine'];
+    await request(server)
+      .get('/appointments/9/rescheduling-proposals?idPatient=99')
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(service.patientProposals).toHaveBeenCalledWith(
+      9,
+      7,
+      expect.objectContaining({ page: 1, limit: 10 }),
+    );
+    await request(server)
+      .get('/appointments/9/rescheduling-proposals?page=0')
+      .auth(token, { type: 'bearer' })
       .expect(400);
   });
 });

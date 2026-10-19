@@ -69,6 +69,7 @@ describe('MEDISUR access seed', () => {
               ? [
                   'appointment.get-agenda',
                   'appointment.cancel-as-doctor',
+                  'appointment.propose-rescheduling',
                   'schedule.create',
                   'schedule.update',
                 ]

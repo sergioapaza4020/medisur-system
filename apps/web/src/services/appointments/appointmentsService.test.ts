@@ -76,3 +76,32 @@ it('sends only the reason to the doctor cancellation endpoint', async () => {
   expect(await appointmentsService.cancelAsDoctor(9, 'Urgencia')).toEqual(result);
   expect(apiClient.patch).toHaveBeenCalledWith('/appointments/9/cancel-as-doctor', { reason: 'Urgencia' });
 });
+
+it('uses scoped rescheduling endpoints and the existing pagination envelope', async () => {
+  const page = { data: [], meta: { page: 2, limit: 5, total: 0, totalPages: 0 } };
+  const query = { page: 2, limit: 5, date: '2099-11-03' };
+  vi.mocked(apiClient.get).mockResolvedValue({ data: page });
+  expect(await appointmentsService.reschedulingAvailability(9, query)).toEqual(page);
+  expect(apiClient.get).toHaveBeenCalledWith('/appointments/9/rescheduling-availability', { params: query });
+  expect(await appointmentsService.patientProposals(9, { page: 2, limit: 5 })).toEqual(page);
+  expect(apiClient.get).toHaveBeenCalledWith('/appointments/9/rescheduling-proposals', {
+    params: { page: 2, limit: 5 },
+  });
+  vi.mocked(apiClient.post).mockResolvedValue({ data: { data: { idProposal: 3, status: 'PENDING' } } });
+  expect(
+    await appointmentsService.proposeRescheduling(9, {
+      idSchedule: 4,
+      version: 2,
+      idDoctor: 99,
+      idSpecialty: 88,
+      date: '2099-11-03',
+      startTime: '11:00',
+      endTime: '12:00',
+      timeZone: 'America/La_Paz',
+    }),
+  ).toMatchObject({ idProposal: 3 });
+  expect(apiClient.post).toHaveBeenCalledWith('/appointments/9/rescheduling-proposals', {
+    idSchedule: 4,
+    expectedVersion: 2,
+  });
+});

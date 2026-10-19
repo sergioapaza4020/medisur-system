@@ -56,6 +56,7 @@ export async function seedAccessControl(manager: EntityManager) {
                     'schedule.update',
                     'appointment.get-agenda',
                     'appointment.cancel-as-doctor',
+                    'appointment.propose-rescheduling',
                   ].includes(permission.name),
                 )
               : [];

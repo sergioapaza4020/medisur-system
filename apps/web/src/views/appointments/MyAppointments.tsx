@@ -21,6 +21,7 @@ import type { AppointmentsPage, AppointmentsQuery, AppointmentStatus } from '@/t
 import { appointmentStatusLabels } from '@/types/appointments';
 import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 import CancelAppointment from './CancelAppointment';
+import PatientProposals from './PatientProposals';
 import tableStyles from '@core/styles/table.module.css';
 
 export default function MyAppointments() {
@@ -161,6 +162,10 @@ export default function MyAppointments() {
                               {appointmentStatusLabels[appointment.status]}
                               {appointment.status === 'CANCELLED' && (
                                 <Stack spacing={1} sx={{ mt: 1, maxWidth: 360, whiteSpace: 'normal' }}>
+                                  <PatientProposals
+                                    key={`${idUser}/${appointment.idAppointment}`}
+                                    idAppointment={appointment.idAppointment}
+                                  />
                                   <Typography variant='subtitle2'>Motivo de cancelación</Typography>
                                   <Typography variant='body2' sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
                                     {appointment.cancellationReason?.trim() ||

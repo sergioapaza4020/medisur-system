@@ -9,6 +9,8 @@ import { CreateAdministrativeAppointmentDto } from 'src/dtos/appointments/create
 import { PatientSelectionQueryDto } from 'src/dtos/appointments/patient-selection-query.dto';
 import { DoctorAgendaQueryDto } from 'src/dtos/appointments/doctor-agenda-query.dto';
 import { CancelDoctorAppointmentDto } from 'src/dtos/appointments/cancel-doctor-appointment.dto';
+import { ReschedulingAvailabilityQueryDto } from 'src/dtos/appointments/rescheduling-availability-query.dto';
+import { PaginationQueryDto } from 'src/dtos/common/pagination-query.dto';
 import { AppointmentsService } from 'src/services/appointments/appointments.service';
 
 @ApiBearerAuth('access-token')
@@ -32,6 +34,36 @@ export class AppointmentsController {
     @Body() dto: CancelDoctorAppointmentDto,
   ) {
     return this.service.cancelAsDoctor(id, user.idUser, dto.reason);
+  }
+
+  @Post(':idAppointment/rescheduling-proposals')
+  @Permissions('appointment.propose-rescheduling')
+  proposeRescheduling(
+    @Param('idAppointment', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateAppointmentDto,
+  ) {
+    return this.service.proposeRescheduling(id, user.idUser, dto);
+  }
+
+  @Get(':idAppointment/rescheduling-availability')
+  @Permissions('appointment.propose-rescheduling')
+  reschedulingAvailability(
+    @Param('idAppointment', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ReschedulingAvailabilityQueryDto,
+  ) {
+    return this.service.reschedulingAvailability(id, user.idUser, query);
+  }
+
+  @Get(':idAppointment/rescheduling-proposals')
+  @Permissions('appointment.get-mine')
+  patientProposals(
+    @Param('idAppointment', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtPayload,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.service.patientProposals(id, user.idUser, query);
   }
 
   @Get('agenda')

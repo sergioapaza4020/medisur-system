@@ -10,10 +10,12 @@ export default function AvailabilitySlots({
   blocks,
   onReserve,
   bookingFor,
+  onSelect,
 }: {
   date: string;
   bookingFor?: BookingPatient;
   blocks: AvailabilityBlock[];
+  onSelect?: (block: AvailabilityBlock) => void;
   onReserve?: (success: boolean, message: string) => void;
 }) {
   return (
@@ -37,8 +39,9 @@ export default function AvailabilitySlots({
             <Button
               key={`${block.idSchedule}-${block.startTime}-${block.endTime}`}
               variant='outlined'
-              sx={{ minHeight: 44, cursor: 'default', color: 'text.primary' }}
-              aria-label={`Horario disponible de ${block.startTime.slice(0, 5)} a ${block.endTime.slice(0, 5)}`}
+              onClick={onSelect ? () => onSelect(block) : undefined}
+              sx={{ minHeight: 44, cursor: onSelect ? 'pointer' : 'default', color: 'text.primary' }}
+              aria-label={`${onSelect ? 'Seleccionar horario' : 'Horario disponible'} de ${block.startTime.slice(0, 5)} a ${block.endTime.slice(0, 5)}`}
             >
               {block.startTime.slice(0, 5)}–{block.endTime.slice(0, 5)}
             </Button>
