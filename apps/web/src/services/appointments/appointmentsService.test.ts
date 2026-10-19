@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { appointmentsService } from './appointmentsService';
 import { apiClient } from '../http/axiosClient';
 
-vi.mock('../http/axiosClient', () => ({ apiClient: { post: vi.fn() } }));
+vi.mock('../http/axiosClient', () => ({ apiClient: { post: vi.fn(), get: vi.fn() } }));
 describe('Appointment transport', () => {
   it('posts only the selected schedule and its version, leaving identity and state to the server', async () => {
     const appointment = { idAppointment: 8, status: 'RESERVED' };
@@ -21,5 +21,12 @@ describe('Appointment transport', () => {
       }),
     ).toEqual(appointment);
     expect(apiClient.post).toHaveBeenCalledWith('/appointments', { idSchedule: 9, expectedVersion: 3 });
+  });
+  it('preserves the common pagination envelope and sends list filters without patient identity', async () => {
+    const page = { data: [], meta: { page: 2, limit: 5, total: 0, totalPages: 0 } };
+    const query = { page: 2, limit: 5, period: 'past' as const, date: '2026-01-01', status: 'RESERVED' as const };
+    vi.mocked(apiClient.get).mockResolvedValue({ data: page });
+    expect(await appointmentsService.mine(query)).toEqual(page);
+    expect(apiClient.get).toHaveBeenCalledWith('/appointments/mine', { params: query });
   });
 });

@@ -10,6 +10,7 @@ import { Specialty } from 'src/entities/specialties/specialties.entity';
 import { Role } from 'src/entities/roles/roles.entity';
 import { Permission } from 'src/entities/permissions/permissions.entity';
 import { UserSession } from 'src/entities/user-sessions/user-sessions.entity';
+import { AppointmentsQueryDto } from 'src/dtos/appointments/appointments-query.dto';
 import { AvailabilityQueryDto } from 'src/dtos/schedules/availability-query.dto';
 import { CreateAppointments1792450000000 } from 'src/database/migrations/1792450000000-CreateAppointments';
 import { SchedulesService } from '../schedules/schedules.service';
@@ -238,5 +239,64 @@ postgres('Appointment booking against PostgreSQL', () => {
       if (runner.isTransactionActive) await runner.rollbackTransaction();
       await runner.release();
     }
+  });
+  it('isolates patients, filters by date/status/period and counts only their own appointments', async () => {
+    const repository = source.getRepository(Appointment);
+    const own = await service.create(dto(), patient.idUser);
+    const otherSchedule = await source
+      .getRepository(Schedule)
+      .save({ doctor, specialty, date, startTime: '11:00', endTime: '12:00' });
+    await service.create(
+      { idSchedule: otherSchedule.idSchedule, expectedVersion: otherSchedule.version },
+      other.idUser,
+    );
+    const pastSchedule = await source
+      .getRepository(Schedule)
+      .save({ doctor, specialty, date: '2000-01-01', startTime: '09:00', endTime: '10:00' });
+    const past = await repository.save({
+      schedule: pastSchedule,
+      patient,
+      doctor,
+      specialty,
+      date: pastSchedule.date,
+      startTime: '09:00',
+      endTime: '10:00',
+    });
+    const query = (filters: Partial<AppointmentsQueryDto> = {}) =>
+      Object.assign(new AppointmentsQueryDto(), filters);
+    const upcoming = await service.mine(patient.idUser, query());
+    expect(upcoming.meta.total).toBe(1);
+    expect(upcoming.data.map((row) => row.idAppointment)).toEqual([own.idAppointment]);
+    const previous = await service.mine(patient.idUser, query({ period: 'past' }));
+    expect(previous.data.map((row) => row.idAppointment)).toEqual([past.idAppointment]);
+    expect(
+      (await service.mine(patient.idUser, query({ period: 'all', limit: 1, page: 2 }))).meta,
+    ).toMatchObject({ total: 2, totalPages: 2 });
+    expect((await service.mine(other.idUser, query({ period: 'all' }))).meta.total).toBe(1);
+    expect(
+      (
+        await service.mine(
+          patient.idUser,
+          query({ period: 'all', date: '2000-01-01', status: past.status }),
+        )
+      ).data.map((row) => row.idAppointment),
+    ).toEqual([past.idAppointment]);
+    expect((await service.mine(patient.idUser, query({ date: '2099-11-03' }))).data).toEqual([]);
+    await repository.update(past.idAppointment, { status: 'OTHER' as Appointment['status'] });
+    expect(
+      (await service.mine(patient.idUser, query({ period: 'all', status: own.status }))).meta.total,
+    ).toBe(1);
+  });
+  it('keeps historical doctor and specialty names after deactivation or soft deletion', async () => {
+    await service.create(dto(), patient.idUser);
+    await source.getRepository(Doctor).softDelete(doctor.idDoctor);
+    await source.getRepository(User).softDelete(doctor.user.idUser);
+    await source.getRepository(Specialty).update(specialty.idSpecialty, { isActive: false });
+    const result = await service.mine(patient.idUser, new AppointmentsQueryDto());
+    expect(result.meta.total).toBe(1);
+    expect(result.data[0]).toMatchObject({
+      doctor: { name: 'Doctor', lastname: 'Test' },
+      specialty: { name: specialty.name },
+    });
   });
 });

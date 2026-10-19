@@ -139,6 +139,7 @@ describe('MEDISUR access seed', () => {
     expect(patient.permissions.map(({ name }) => name)).toEqual([
       'custom.read',
       'appointment.create',
+      'appointment.get-mine',
       'schedule.get-availability',
       'doctor.get-by-specialty',
     ]);
@@ -149,6 +150,7 @@ describe('MEDISUR access seed', () => {
     ).toBe(false);
     patient.permissions = [custom];
     consultation.isActive = false;
+    permissions.records.find(({ name }) => name === 'appointment.get-mine')!.isActive = false;
     permissions.records.find(({ name }) => name === 'appointment.create')!.isActive = false;
     permissions.records.find(({ name }) => name === 'schedule.get-availability')!.isActive = false;
     await seedAccessControl(manager);
