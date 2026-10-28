@@ -7,6 +7,7 @@ import {
   MEDISUR_ROLES,
   MEDISUR_STAFF_PERMISSION_NAMES,
   MEDISUR_PATIENT_PERMISSION_NAMES,
+  MEDISUR_CLINICAL_PERMISSION_NAMES,
 } from './access-control.catalog';
 import { Reflector } from '@nestjs/core';
 import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
@@ -48,7 +49,10 @@ describe('MEDISUR access seed', () => {
     ]);
     expect(academic.isActive).toBe(false);
     const admin = roles.records.find((r) => r.name === 'SUPERADMIN')!;
-    expect(admin.permissions.map((p) => p.name)).toEqual(MEDISUR_PERMISSION_NAMES);
+    expect(admin.permissions.map((p) => p.name)).toEqual(
+      MEDISUR_PERMISSION_NAMES.filter((name) => !MEDISUR_CLINICAL_PERMISSION_NAMES.includes(name)),
+    );
+    expect(admin.permissions.some(({ name }) => name === 'encounter.create')).toBe(false);
     expect(admin.permissions.some((permission) => permission.name === 'user.create-patient')).toBe(
       true,
     );
@@ -67,6 +71,7 @@ describe('MEDISUR access seed', () => {
             ? MEDISUR_PATIENT_PERMISSION_NAMES
             : role.name === 'DOCTOR'
               ? [
+                  'encounter.create',
                   'appointment.get-agenda',
                   'appointment.cancel-as-doctor',
                   'appointment.propose-rescheduling',
@@ -86,7 +91,9 @@ describe('MEDISUR access seed', () => {
     expect(roles.records).toHaveLength(4);
     expect(permissions.records).toHaveLength(MEDISUR_PERMISSION_NAMES.length + 2);
     expect(admin.permissions.map((p) => p.name)).toEqual(
-      MEDISUR_PERMISSION_NAMES.filter((name) => name !== 'role.update'),
+      MEDISUR_PERMISSION_NAMES.filter(
+        (name) => name !== 'role.update' && !MEDISUR_CLINICAL_PERMISSION_NAMES.includes(name),
+      ),
     );
     expect(staff.permissions.map(({ name }) => name)).toEqual([
       'custom.read',
@@ -119,7 +126,9 @@ describe('MEDISUR access seed', () => {
 
     expect(admin.permissions.map((p) => p.name)).toEqual([
       'custom.read',
-      ...MEDISUR_PERMISSION_NAMES,
+      ...MEDISUR_PERMISSION_NAMES.filter(
+        (name) => !MEDISUR_CLINICAL_PERMISSION_NAMES.includes(name),
+      ),
     ]);
     expect(admin.isActive).toBe(false);
     expect(roles.records.filter((role) => role.name === 'SUPERADMIN')).toHaveLength(1);

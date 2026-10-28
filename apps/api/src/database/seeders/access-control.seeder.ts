@@ -7,6 +7,7 @@ import {
   MEDISUR_ROLES,
   MEDISUR_STAFF_PERMISSION_NAMES,
   MEDISUR_PATIENT_PERMISSION_NAMES,
+  MEDISUR_CLINICAL_PERMISSION_NAMES,
 } from './access-control.catalog';
 
 // Called inside a transaction. Repeated runs repair only the explicit base-role grants.
@@ -40,7 +41,9 @@ export async function seedAccessControl(manager: EntityManager) {
   for (const definition of MEDISUR_ROLES) {
     const grants =
       definition.name === 'SUPERADMIN'
-        ? permissions
+        ? permissions.filter(
+            (permission) => !MEDISUR_CLINICAL_PERMISSION_NAMES.includes(permission.name),
+          )
         : definition.name === 'STAFF'
           ? permissions.filter((permission) =>
               MEDISUR_STAFF_PERMISSION_NAMES.includes(permission.name),
@@ -52,6 +55,7 @@ export async function seedAccessControl(manager: EntityManager) {
             : definition.name === 'DOCTOR'
               ? permissions.filter((permission) =>
                   [
+                    'encounter.create',
                     'schedule.create',
                     'schedule.update',
                     'appointment.get-agenda',

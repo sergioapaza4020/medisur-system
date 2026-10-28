@@ -6,6 +6,7 @@ const domains: Record<string, string> = {
   session: 'Sesiones',
   specialty: 'Especialidades',
   doctor: 'Médicos',
+  encounter: 'Atenciones médicas',
 };
 const actions: Record<string, string> = {
   'create-patient': 'Registrar pacientes',
