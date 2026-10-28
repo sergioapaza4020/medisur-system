@@ -33,6 +33,7 @@ import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 import CancelAppointment from './CancelAppointment';
 import ProposeRescheduling from './ProposeRescheduling';
 import PatientProposals from './PatientProposals';
+import RegisterEncounter from './RegisterEncounter';
 import {
   agendaPeriod,
   boliviaClock,
@@ -190,6 +191,7 @@ export default function DoctorAgenda() {
       <CardContent>
         <Stack spacing={3}>
           <Typography variant='h5'>Mi agenda médica</Typography>
+          <RegisterEncounter />
           <Typography variant='body2'>Citas programadas · Hora de Bolivia (America/La_Paz)</Typography>
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
@@ -468,6 +470,7 @@ export default function DoctorAgenda() {
               </DialogContent>
             )}
             <DialogActions>
+              {selectedEvent && <RegisterEncounter appointment={selectedEvent} />}
               {selectedEvent?.status === 'CANCELLED' && (
                 <PatientProposals
                   key={`${idUser}/${selectedEvent.idAppointment}`}
