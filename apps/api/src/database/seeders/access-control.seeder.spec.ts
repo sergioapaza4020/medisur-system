@@ -73,6 +73,7 @@ describe('MEDISUR access seed', () => {
               ? [
                   'encounter.create',
                   'medical-record.get-by-appointment',
+                  'medical-record.get-extraordinary',
                   'appointment.get-agenda',
                   'appointment.cancel-as-doctor',
                   'appointment.propose-rescheduling',

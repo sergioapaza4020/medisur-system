@@ -11,6 +11,7 @@ import { Encounter } from 'src/entities/encounters/encounter.entity';
 import { MedicalRecord } from 'src/entities/medical-records/medical-record.entity';
 import { MedicalRecordAccess } from 'src/entities/medical-records/medical-record-access.entity';
 import { User } from 'src/entities/users/users.entity';
+import { ExtraordinaryGrant } from 'src/entities/medical-records/extraordinary-grant.entity';
 import { SchedulesService } from '../schedules/schedules.service';
 
 @Injectable()
@@ -19,6 +20,58 @@ export class MedicalRecordsService {
     private readonly source: DataSource,
     private readonly schedules: SchedulesService,
   ) {}
+
+  async byExtraordinaryGrant(
+    idGrant: number,
+    idUser: number,
+    query: PaginationQueryDto,
+  ): Promise<PaginatedResult<DoctorMedicalEncounter>> {
+    return this.source.transaction(async (manager) => {
+      const doctor = await this.schedules.ownDoctor(manager, idUser);
+      await manager
+        .getRepository(Doctor)
+        .findOne({ where: { idDoctor: doctor.idDoctor }, lock: { mode: 'pessimistic_read' } });
+      await this.schedules.ownDoctor(manager, idUser);
+      const grants = manager.getRepository(ExtraordinaryGrant);
+      const grant = await grants
+        .createQueryBuilder('clinical_grant')
+        .innerJoinAndSelect('clinical_grant.patient', 'patient')
+        .select(['clinical_grant.idGrant', 'clinical_grant.expiresAt', 'patient.idUser'])
+        .where('clinical_grant.idGrant = :idGrant AND clinical_grant.id_beneficiary = :idUser', {
+          idGrant,
+          idUser,
+        })
+        .andWhere(
+          'clinical_grant.revokedAt IS NULL AND clinical_grant.expiresAt > clock_timestamp()',
+        )
+        .andWhere('patient.isActive = true')
+        .setLock('pessimistic_read', undefined, ['clinical_grant', 'patient'])
+        .getOne();
+      if (!grant) throw new ForbiddenException('No tienes una autorización extraordinaria vigente');
+      const record = await this.activeRecord(manager, grant.patient.idUser);
+      const result = await this.encounterPage(manager, grant.patient.idUser, record, query);
+      const stillValid = await grants
+        .createQueryBuilder('clinical_grant')
+        .where(
+          'clinical_grant.idGrant = :idGrant AND clinical_grant.expiresAt > clock_timestamp()',
+          { idGrant },
+        )
+        .getExists();
+      if (!stillValid) throw new ForbiddenException('La autorización extraordinaria venció');
+      const accesses = manager.getRepository(MedicalRecordAccess);
+      await accesses.save(
+        accesses.create({
+          actor: { idUser },
+          patient: grant.patient,
+          doctor,
+          appointment: null,
+          extraordinaryGrant: grant,
+          medicalRecord: record,
+        }),
+      );
+      return result;
+    });
+  }
 
   async mine(
     idUser: number,

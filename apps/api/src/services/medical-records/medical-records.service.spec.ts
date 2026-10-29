@@ -3,6 +3,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { MedicalRecordsService } from './medical-records.service';
 import { SchedulesService } from '../schedules/schedules.service';
 import { MedicalRecordAccess } from 'src/entities/medical-records/medical-record-access.entity';
+import { ExtraordinaryGrant } from 'src/entities/medical-records/extraordinary-grant.entity';
 import { MedicalRecord } from 'src/entities/medical-records/medical-record.entity';
 import { Encounter } from 'src/entities/encounters/encounter.entity';
 import { Appointment } from 'src/entities/appointments/appointment.entity';
@@ -25,6 +26,7 @@ describe('Doctor medical record authorization and projection', () => {
     type: 'postgres',
     entities: [
       MedicalRecordAccess,
+      ExtraordinaryGrant,
       MedicalRecord,
       Encounter,
       Appointment,
@@ -188,6 +190,22 @@ describe('Doctor medical record authorization and projection', () => {
     });
     expect(clinicalQuery.getParameters()).toMatchObject({ recordId: 0, patientId: 5 });
     expect(saveAccess).toHaveBeenCalledWith(expect.objectContaining({ medicalRecord: null }));
+  });
+
+  it('checks the grant deadline again after reading the page and withholds content when it expires', async () => {
+    const repository = source.getRepository(ExtraordinaryGrant);
+    const qb = repository.createQueryBuilder('clinical_grant');
+    jest.spyOn(repository, 'createQueryBuilder').mockReturnValue(qb);
+    jest
+      .spyOn(qb, 'getOne')
+      .mockResolvedValue({ idGrant: 9, patient: { idUser: 5 } } as ExtraordinaryGrant);
+    const recheck = jest.spyOn(qb, 'getExists').mockResolvedValue(false);
+    await expect(service.byExtraordinaryGrant(9, 7, page)).rejects.toThrow(
+      'La autorización extraordinaria venció',
+    );
+    expect(encounterLookup).toHaveBeenCalledTimes(1);
+    expect(recheck).toHaveBeenCalledTimes(1);
+    expect(saveAccess).not.toHaveBeenCalled();
   });
 
   it('scopes the patient history to the session account and omits all internal identifiers', async () => {

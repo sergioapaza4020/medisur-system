@@ -86,6 +86,16 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
             Mi historial clínico
           </MenuItem>
         )}
+        {hasPermission('medical-record.manage-extraordinary') && (
+          <MenuItem href='/dashboard/medical-records/access-management' icon={<i className='ri-key-2-line' />}>
+            Gestionar accesos clínicos
+          </MenuItem>
+        )}
+        {hasPermission('medical-record.get-extraordinary') && (
+          <MenuItem href='/dashboard/medical-records/extraordinary' icon={<i className='ri-heart-pulse-line' />}>
+            Accesos clínicos autorizados
+          </MenuItem>
+        )}
         {hasPermission('schedule.update') && (
           <MenuItem href='/dashboard/schedules' icon={<i className='ri-calendar-2-line' />}>
             Mis horarios

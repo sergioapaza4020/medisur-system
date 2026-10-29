@@ -57,6 +57,7 @@ export async function seedAccessControl(manager: EntityManager) {
                   [
                     'encounter.create',
                     'medical-record.get-by-appointment',
+                    'medical-record.get-extraordinary',
                     'schedule.create',
                     'schedule.update',
                     'appointment.get-agenda',

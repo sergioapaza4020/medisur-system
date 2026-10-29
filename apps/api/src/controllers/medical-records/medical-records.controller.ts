@@ -13,6 +13,17 @@ import { MedicalRecordsService } from 'src/services/medical-records/medical-reco
 export class MedicalRecordsController {
   constructor(private readonly service: MedicalRecordsService) {}
 
+  @Get('by-extraordinary-grant/:idGrant')
+  @Permissions('medical-record.get-extraordinary')
+  @Header('Cache-Control', 'no-store')
+  byExtraordinaryGrant(
+    @Param('idGrant', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtPayload,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.service.byExtraordinaryGrant(id, user.idUser, query);
+  }
+
   @Get('mine')
   @Permissions('medical-record.get-mine')
   @Header('Cache-Control', 'no-store')
