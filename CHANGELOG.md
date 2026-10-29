@@ -1,3 +1,13 @@
+## [1.4.0](https://github.com/sergioapaza4020/medisur-system/compare/v1.3.0...v1.4.0) (2026-10-29)
+
+### Features
+
+* **clinical:** implement extraordinary medical history access management ([609c6ce](https://github.com/sergioapaza4020/medisur-system/commit/609c6ce2a5a4a0f1876da7cc7ac3143b1c6d2a18))
+* **clinical:** implement medical consultation records ([922a0cb](https://github.com/sergioapaza4020/medisur-system/commit/922a0cbec8c230dd61ae616dc147cc574af61b68))
+* **clinical:** implement patient medical history access ([2601b79](https://github.com/sergioapaza4020/medisur-system/commit/2601b7901ce1e167a44dd1efc8c64cbb6f51f87e))
+* **clinical:** implement patient medical history management ([d6c9552](https://github.com/sergioapaza4020/medisur-system/commit/d6c95529b4c0117eb9cc36e4c87be5cffd8046c4))
+* **clinical:** implement secure medical history access for doctors ([b47e86e](https://github.com/sergioapaza4020/medisur-system/commit/b47e86e0337ab487c8da48dadddd3d7240b439df))
+
 ## [1.3.0](https://github.com/sergioapaza4020/medisur-system/compare/v1.2.0...v1.3.0) (2026-10-19)
 
 ### Features
