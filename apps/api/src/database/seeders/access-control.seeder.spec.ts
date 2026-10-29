@@ -72,6 +72,7 @@ describe('MEDISUR access seed', () => {
             : role.name === 'DOCTOR'
               ? [
                   'encounter.create',
+                  'medical-record.get-by-appointment',
                   'appointment.get-agenda',
                   'appointment.cancel-as-doctor',
                   'appointment.propose-rescheduling',

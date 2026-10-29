@@ -56,6 +56,7 @@ export async function seedAccessControl(manager: EntityManager) {
               ? permissions.filter((permission) =>
                   [
                     'encounter.create',
+                    'medical-record.get-by-appointment',
                     'schedule.create',
                     'schedule.update',
                     'appointment.get-agenda',

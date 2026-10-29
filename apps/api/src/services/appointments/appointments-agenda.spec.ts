@@ -160,6 +160,7 @@ describe('Doctor agenda SQL and scope', () => {
           startTime: '09:00:00',
           endTime: '10:00:00',
           status: 'RESCHEDULED',
+          canReadMedicalRecord: false,
           timeZone: 'America/La_Paz',
         },
       ],
@@ -168,7 +169,7 @@ describe('Doctor agenda SQL and scope', () => {
     expect(JSON.stringify(result)).not.toMatch(
       /email|password|createdBy|idUser|idPatient|roles|permissions/,
     );
-    expect(qb.getQuery()).not.toContain('is_active');
+    expect(qb.getQuery()).not.toContain('"appointment"."is_active" =');
   });
   it('allows an inclusive range of 31 days and returns a valid empty page', async () => {
     const repository = source.getRepository(Appointment);
