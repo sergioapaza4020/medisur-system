@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/sergioapaza4020/medisur-system/compare/v1.2.0...v1.3.0) (2026-10-19)
+
+### Features
+
+* **appointments:** implement rescheduling response flow ([8428f0f](https://github.com/sergioapaza4020/medisur-system/commit/8428f0fff2c7031a5f1c89f3f467309c6a5d69e5))
+
 ## [1.2.0](https://github.com/sergioapaza4020/medisur-system/compare/v1.1.0...v1.2.0) (2026-10-19)
 
 ### Features
