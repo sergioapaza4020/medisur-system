@@ -4,6 +4,7 @@ import { User } from '../users/users.entity';
 import { Doctor } from '../doctors/doctors.entity';
 import { Specialty } from '../specialties/specialties.entity';
 import { Appointment } from '../appointments/appointment.entity';
+import { MedicalRecord } from '../medical-records/medical-record.entity';
 
 @Entity('encounters')
 export class Encounter extends BaseEntity {
@@ -13,6 +14,16 @@ export class Encounter extends BaseEntity {
   @ManyToOne(() => User, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'id_patient' })
   patient: User;
+
+  @ManyToOne(() => MedicalRecord, (record) => record.encounters, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn([
+    { name: 'id_medical_record', referencedColumnName: 'idMedicalRecord' },
+    { name: 'id_patient', referencedColumnName: 'idPatient' },
+  ])
+  medicalRecord: MedicalRecord;
 
   @ManyToOne(() => Doctor, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'id_doctor' })

@@ -16,7 +16,7 @@ El seed crea `encounter.create` y lo asigna a DOCTOR. La clasificación clínica
 
 ## Persistencia y conservación
 
-La migración `1792886400000-CreateEncounters` crea `encounters`, sus relaciones restrictivas a paciente, médico, especialidad y cita opcional, fecha/hora, resumen y los campos de BaseEntity. El índice por paciente/fecha prepara la asociación lógica futura con el historial general. No se implementa todavía la entidad ni las consultas de HU-HCL-02 a HU-HCL-05.
+La migración `1792886400000-CreateEncounters` crea `encounters`, sus relaciones restrictivas a paciente, médico, especialidad y cita opcional, fecha/hora, resumen y los campos de BaseEntity. El índice por paciente/fecha prepara la asociación con el historial general. [HU-HCL-02](hu-hcl-02-historial-clinico.md) incorpora posteriormente el historial único y su asociación transaccional; las consultas y accesos de HU-HCL-03 a HU-HCL-05 corresponden a historias posteriores.
 
 Cada operación inserta una atención nueva en una transacción y conserva las anteriores; no existen rutas de modificación o eliminación. Se reutiliza el bloqueo del médico que serializa operaciones de citas y horarios. La eliminación física de las entidades referenciadas queda restringida; su desactivación o soft delete no elimina las atenciones. `summary` no se selecciona por defecto en TypeORM. No se añaden logs de contenido clínico y las respuestas de validación no incluyen el valor rechazado. `createdBy` y `createdAt` preparan la trazabilidad sin implementar la bitácora transversal de EPIC-09.
 

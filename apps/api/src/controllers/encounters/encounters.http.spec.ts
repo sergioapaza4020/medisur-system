@@ -99,12 +99,22 @@ describe('Clinical registration HTTP authorization and validation', () => {
         idAppointment: 9,
         summary: ' Text ',
         idDoctor: 99,
+        idMedicalRecord: 99,
+        medicalRecord: { idMedicalRecord: 99, idPatient: 99 },
         createdBy: 99,
         occurredAt: '2000-01-01',
       })
       .expect(201);
     expect(service.create).toHaveBeenCalledWith({ idAppointment: 9, summary: 'Text' }, 7);
   });
+
+  it.each(['/medical-records', '/medical-records/1', '/encounters/1'])(
+    'does not expose a clinical read route at %s merely because a record exists',
+    async (path) => {
+      session.roles = ['SUPERADMIN'];
+      await request(server).get(path).auth(token, { type: 'bearer' }).expect(404);
+    },
+  );
   it('accepts a valid encounter without an appointment', async () => {
     await request(server)
       .post('/encounters')
