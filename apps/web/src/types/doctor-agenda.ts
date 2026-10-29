@@ -16,6 +16,7 @@ export interface DoctorAppointment {
   startTime: string;
   endTime: string;
   status: AppointmentStatus;
+  canReadMedicalRecord?: boolean;
   timeZone: 'America/La_Paz';
 }
 export type DoctorAgendaPage = PaginatedResponse<DoctorAppointment>;

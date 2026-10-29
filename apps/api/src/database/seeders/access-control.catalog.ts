@@ -1,6 +1,7 @@
 // Keep the resource.action convention used by the existing controllers.
 export const MEDISUR_PERMISSIONS = {
   encounter: ['create'],
+  'medical-record': ['get-by-appointment'],
   user: [
     'get-all',
     'get-one-by-email',
@@ -58,7 +59,10 @@ export const MEDISUR_PERMISSION_NAMES = Object.entries(MEDISUR_PERMISSIONS).flat
   ([resource, actions]) => actions.map((action) => `${resource}.${action}`),
 );
 
-export const MEDISUR_CLINICAL_PERMISSION_NAMES = ['encounter.create'];
+export const MEDISUR_CLINICAL_PERMISSION_NAMES = [
+  'encounter.create',
+  'medical-record.get-by-appointment',
+];
 
 export const MEDISUR_STAFF_PERMISSION_NAMES = [
   'appointment.create-for-patient',

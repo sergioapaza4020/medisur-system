@@ -441,11 +441,14 @@ export class AppointmentsService {
       .leftJoinAndSelect('appointment.specialty', 'specialty')
       .select([
         'appointment.idAppointment',
+        'appointment.isActive',
         'appointment.date',
         'appointment.startTime',
         'appointment.endTime',
         'appointment.status',
         'patient.idUser',
+        'patient.isActive',
+        'patient.deletedAt',
         'patient.name',
         'patient.lastname',
         ...(query.mode === 'calendar' ? [] : ['patient.ci']),
@@ -489,6 +492,11 @@ export class AppointmentsService {
         startTime: appointment.startTime,
         endTime: appointment.endTime,
         status: appointment.status,
+        canReadMedicalRecord:
+          appointment.status === AppointmentStatus.RESERVED &&
+          appointment.isActive === true &&
+          appointment.patient?.isActive === true &&
+          !appointment.patient.deletedAt,
         timeZone: 'America/La_Paz',
       })),
     };

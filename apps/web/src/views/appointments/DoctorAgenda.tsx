@@ -34,6 +34,7 @@ import CancelAppointment from './CancelAppointment';
 import ProposeRescheduling from './ProposeRescheduling';
 import PatientProposals from './PatientProposals';
 import RegisterEncounter from './RegisterEncounter';
+import DoctorMedicalRecord from './DoctorMedicalRecord';
 import {
   agendaPeriod,
   boliviaClock,
@@ -471,6 +472,7 @@ export default function DoctorAgenda() {
             )}
             <DialogActions>
               {selectedEvent && <RegisterEncounter appointment={selectedEvent} />}
+              {selectedEvent && <DoctorMedicalRecord appointment={selectedEvent} />}
               {selectedEvent?.status === 'CANCELLED' && (
                 <PatientProposals
                   key={`${idUser}/${selectedEvent.idAppointment}`}

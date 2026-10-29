@@ -7,11 +7,13 @@ const domains: Record<string, string> = {
   specialty: 'Especialidades',
   doctor: 'Médicos',
   encounter: 'Atenciones médicas',
+  'medical-record': 'Historiales clínicos',
 };
 const actions: Record<string, string> = {
   'create-patient': 'Registrar pacientes',
   'get-all': 'Consultar listado',
   'get-by-specialty': 'Consultar médicos por especialidad',
+  'get-by-appointment': 'Consultar historial con cita propia',
   'get-one-by-id': 'Consultar por identificador',
   'get-one-by-name': 'Consultar por nombre',
   'get-one-by-email': 'Consultar por correo',
