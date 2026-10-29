@@ -81,6 +81,11 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
             Mis citas
           </MenuItem>
         )}
+        {hasPermission('medical-record.get-mine') && (
+          <MenuItem href='/dashboard/medical-records' icon={<i className='ri-heart-pulse-line' />}>
+            Mi historial clínico
+          </MenuItem>
+        )}
         {hasPermission('schedule.update') && (
           <MenuItem href='/dashboard/schedules' icon={<i className='ri-calendar-2-line' />}>
             Mis horarios

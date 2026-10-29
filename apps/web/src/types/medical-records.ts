@@ -9,3 +9,6 @@ export interface DoctorMedicalEncounter {
 }
 
 export type DoctorMedicalRecordPage = PaginatedResponse<DoctorMedicalEncounter>;
+
+export type PatientMedicalEncounter = Omit<DoctorMedicalEncounter, 'idEncounter'>;
+export type PatientMedicalRecordPage = PaginatedResponse<PatientMedicalEncounter>;

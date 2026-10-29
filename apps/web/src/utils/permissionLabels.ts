@@ -14,6 +14,7 @@ const actions: Record<string, string> = {
   'get-all': 'Consultar listado',
   'get-by-specialty': 'Consultar médicos por especialidad',
   'get-by-appointment': 'Consultar historial con cita propia',
+  'get-mine': 'Consultar información propia',
   'get-one-by-id': 'Consultar por identificador',
   'get-one-by-name': 'Consultar por nombre',
   'get-one-by-email': 'Consultar por correo',

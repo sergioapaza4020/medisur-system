@@ -154,6 +154,7 @@ describe('MEDISUR access seed', () => {
     await seedAccessControl(manager);
     expect(patient.permissions.map(({ name }) => name)).toEqual([
       'custom.read',
+      'medical-record.get-mine',
       'appointment.create',
       'appointment.get-mine',
       'appointment.cancel-mine',
@@ -174,6 +175,7 @@ describe('MEDISUR access seed', () => {
     permissions.records.find(({ name }) => name === 'appointment.get-mine')!.isActive = false;
     permissions.records.find(({ name }) => name === 'appointment.create')!.isActive = false;
     permissions.records.find(({ name }) => name === 'schedule.get-availability')!.isActive = false;
+    permissions.records.find(({ name }) => name === 'medical-record.get-mine')!.isActive = false;
     await seedAccessControl(manager);
     expect(patient.permissions).toEqual([custom]);
     expect(consultation.isActive).toBe(false);

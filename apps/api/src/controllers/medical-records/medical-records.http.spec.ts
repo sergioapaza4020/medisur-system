@@ -24,7 +24,7 @@ describe('Medical record HTTP access boundary', () => {
     roles: ['DOCTOR'],
     permissions: ['medical-record.get-by-appointment'],
   };
-  const service = { byAppointment: jest.fn() };
+  const service = { byAppointment: jest.fn(), mine: jest.fn() };
   const path = '/medical-records/by-appointment/9';
   beforeAll(async () => {
     previous = process.env.JWT_ACCESS_SECRET;
@@ -51,6 +51,10 @@ describe('Medical record HTTP access boundary', () => {
     session.roles = ['DOCTOR'];
     session.permissions = ['medical-record.get-by-appointment'];
     service.byAppointment.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
+    service.mine.mockResolvedValue({
       data: [],
       meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
     });
@@ -107,5 +111,73 @@ describe('Medical record HTTP access boundary', () => {
     session.permissions = [];
     await request(server).get(path).auth(token, { type: 'bearer' }).expect(403);
     expect(service.byAppointment).toHaveBeenCalledTimes(1);
+  });
+
+  describe('Own patient history', () => {
+    beforeEach(() => {
+      session.roles = ['PATIENT'];
+      session.permissions = ['medical-record.get-mine'];
+    });
+    it('requires an authenticated patient session', async () => {
+      await request(server).get('/medical-records/mine').expect(401);
+      expect(service.mine).not.toHaveBeenCalled();
+    });
+    it.each(['PATIENT', 'SUPERADMIN', 'STAFF', 'DOCTOR'])(
+      'does not authorize %s by role or doctor reading permission',
+      async (role) => {
+        session.roles = [role];
+        session.permissions = ['medical-record.get-by-appointment'];
+        await request(server)
+          .get('/medical-records/mine')
+          .auth(token, { type: 'bearer' })
+          .expect(403);
+        expect(service.mine).not.toHaveBeenCalled();
+      },
+    );
+    it('ignores forged identity fields and uses only the session actor with shared pagination', async () => {
+      const result = await request(server)
+        .get(
+          '/medical-records/mine?idUser=999&idPatient=999&idMedicalRecord=999&idDoctor=999&page=2&limit=5',
+        )
+        .auth(token, { type: 'bearer' })
+        .expect(200);
+      expect(service.mine).toHaveBeenCalledTimes(1);
+      expect(service.mine).toHaveBeenCalledWith(7, { page: 2, limit: 5 });
+      expect(result.body).toMatchObject({ data: [], meta: { total: 0 } });
+      expect(result.headers['cache-control']).toBe('no-store');
+    });
+    it('does not offer a route that accepts a different patient identifier', async () => {
+      await request(server)
+        .get('/medical-records/mine/999')
+        .auth(token, { type: 'bearer' })
+        .expect(404);
+      expect(service.mine).not.toHaveBeenCalled();
+    });
+    it.each(['?page=0', '?page=1.5', '?limit=101', '?limit=0', '?page=abc'])(
+      'validates common pagination %s',
+      async (query) => {
+        await request(server)
+          .get('/medical-records/mine' + query)
+          .auth(token, { type: 'bearer' })
+          .expect(400);
+        expect(service.mine).not.toHaveBeenCalled();
+      },
+    );
+    it('does not let the patient permission authorize the doctor endpoint', async () => {
+      await request(server).get(path).auth(token, { type: 'bearer' }).expect(403);
+      expect(service.byAppointment).not.toHaveBeenCalled();
+    });
+    it('rechecks revoked own-history permission on each request', async () => {
+      await request(server)
+        .get('/medical-records/mine')
+        .auth(token, { type: 'bearer' })
+        .expect(200);
+      session.permissions = [];
+      await request(server)
+        .get('/medical-records/mine')
+        .auth(token, { type: 'bearer' })
+        .expect(403);
+      expect(service.mine).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -49,6 +49,7 @@ describe('Doctor medical record authorization and projection', () => {
   let appointmentLookup: jest.SpyInstance;
   let recordLookup: jest.SpyInstance;
   let encounterLookup: jest.SpyInstance;
+  let patientLookup: jest.SpyInstance;
   const appointment = { idAppointment: 9, patient: { idUser: 5 } } as Appointment;
   const record = {
     idMedicalRecord: 4,
@@ -59,6 +60,9 @@ describe('Doctor medical record authorization and projection', () => {
   const page = Object.assign(new PaginationQueryDto(), { page: 2, limit: 5 });
   beforeAll(async () => source.prepare());
   beforeEach(() => {
+    patientLookup = jest
+      .spyOn(source.getRepository(User), 'findOne')
+      .mockResolvedValue({ idUser: 5 } as User);
     doctorLookup = jest.spyOn(schedules, 'ownDoctor').mockResolvedValue({ idDoctor: 3 } as Doctor);
     jest
       .spyOn(source.getRepository(Doctor), 'findOne')
@@ -185,4 +189,55 @@ describe('Doctor medical record authorization and projection', () => {
     expect(clinicalQuery.getParameters()).toMatchObject({ recordId: 0, patientId: 5 });
     expect(saveAccess).toHaveBeenCalledWith(expect.objectContaining({ medicalRecord: null }));
   });
+
+  it('scopes the patient history to the session account and omits all internal identifiers', async () => {
+    const result = await service.mine(5, page);
+    expect(patientLookup).toHaveBeenCalledWith({
+      where: { idUser: 5, isActive: true },
+      select: ['idUser'],
+      lock: { mode: 'pessimistic_read' },
+    });
+    expect(recordLookup).toHaveBeenCalledWith(expect.objectContaining({ where: { idPatient: 5 } }));
+    expect(clinicalQuery.getParameters()).toMatchObject({ recordId: 4, patientId: 5 });
+    expect(result.data[0]).toEqual({
+      occurredAt: new Date('2026-10-01T13:00:00Z'),
+      summary: 'Clinical summary',
+      doctor: { name: 'Ana', lastname: 'Pérez' },
+      specialty: { name: 'General' },
+    });
+    expect(result.meta).toEqual({ page: 2, limit: 5, total: 12, totalPages: 3 });
+    expect(JSON.stringify(result)).not.toMatch(
+      /idEncounter|idPatient|idDoctor|idUser|createdBy|password|email/,
+    );
+    expect(doctorLookup).not.toHaveBeenCalled();
+    expect(appointmentLookup).not.toHaveBeenCalled();
+    expect(saveAccess).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing or inactive patient accounts before reading a record', async () => {
+    patientLookup.mockResolvedValue(null);
+    await expect(service.mine(5, page)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(recordLookup).not.toHaveBeenCalled();
+    expect(encounterLookup).not.toHaveBeenCalled();
+  });
+
+  it('returns an empty patient history without creating records', async () => {
+    recordLookup.mockResolvedValue(null);
+    encounterLookup.mockResolvedValue([[], 0]);
+    expect(await service.mine(5, new PaginationQueryDto())).toEqual({
+      data: [],
+      meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
+    expect(clinicalQuery.getParameters()).toMatchObject({ recordId: 0, patientId: 5 });
+    expect(saveAccess).not.toHaveBeenCalled();
+  });
+
+  it.each([{ isActive: false }, { deletedAt: new Date() }])(
+    'denies unavailable patient histories %j',
+    async (state) => {
+      recordLookup.mockResolvedValue({ ...record, ...state });
+      await expect(service.mine(5, page)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(encounterLookup).not.toHaveBeenCalled();
+    },
+  );
 });

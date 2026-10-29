@@ -321,4 +321,95 @@ postgres('Clinical read isolation and access context in PostgreSQL', () => {
     }
     expect(await source.getRepository(MedicalRecordAccess).count()).toBe(0);
   });
+
+  describe('Own patient history', () => {
+    it('isolates patient records and totals, orders ties stably and omits technical fields', async () => {
+      const first = await add(patient.idUser, 0, 'Own first');
+      const second = await add(patient.idUser, 1, 'Own second');
+      await add(other.idUser, 1, 'PRIVATE-OTHER');
+      await source.getRepository(Encounter).update([first.idEncounter, second.idEncounter], {
+        occurredAt: new Date('2026-10-01T13:00:00Z'),
+      });
+      const result = await service.mine(patient.idUser, query);
+      expect(result.meta).toEqual({ page: 1, limit: 1, total: 2, totalPages: 2 });
+      expect(result.data[0]).toEqual({
+        occurredAt: new Date('2026-10-01T13:00:00Z'),
+        summary: 'Own second',
+        doctor: { name: 'Bea', lastname: 'Doctor' },
+        specialty: { name: 'General' },
+      });
+      expect((await service.mine(patient.idUser, { ...query, page: 2 })).data[0].summary).toBe(
+        'Own first',
+      );
+      expect((await service.mine(patient.idUser, { ...query, page: 3 })).data).toEqual([]);
+      const others = await service.mine(other.idUser, query);
+      expect(others.meta.total).toBe(1);
+      expect(others.data[0].summary).toBe('PRIVATE-OTHER');
+      expect(JSON.stringify(result)).not.toMatch(
+        /PRIVATE-OTHER|idEncounter|idPatient|idUser|idDoctor|idMedicalRecord|createdBy|email|password|roles|permissions/,
+      );
+    });
+    it('does not require an appointment or medical profile for the patient', async () => {
+      await source
+        .getRepository(Appointment)
+        .delete([appointment.idAppointment, otherAppointment.idAppointment]);
+      await add(patient.idUser, 0, 'Own encounter without appointment');
+      const result = await service.mine(patient.idUser, query);
+      expect(result.data[0].summary).toBe('Own encounter without appointment');
+      expect(await source.getRepository(MedicalRecordAccess).count()).toBe(0);
+    });
+    it('returns an empty own history even when another patient has one, without creating records', async () => {
+      await add(other.idUser);
+      expect(await service.mine(patient.idUser, query)).toEqual({
+        data: [],
+        meta: { page: 1, limit: 1, total: 0, totalPages: 0 },
+      });
+      expect(await source.getRepository(MedicalRecord).count()).toBe(1);
+    });
+    it('filters inactive/deleted encounters and retains historical physician and specialty names', async () => {
+      const valid = await add(patient.idUser, 1, 'Historical physician');
+      const inactive = await add();
+      const deleted = await add();
+      await source.getRepository(Encounter).update(inactive.idEncounter, { isActive: false });
+      await source.getRepository(Encounter).softDelete(deleted.idEncounter);
+      await source.getRepository(Doctor).softDelete(doctors[1].idDoctor);
+      await source.getRepository(User).softDelete(physicians[1].idUser);
+      await source.getRepository(Specialty).softDelete(specialty.idSpecialty);
+      const result = await service.mine(patient.idUser, query);
+      expect(result.meta.total).toBe(1);
+      expect(result.data[0].summary).toBe('Historical physician');
+      expect(result.data[0].doctor.name).toBe('Bea');
+      expect(result.data[0].specialty.name).toBe('General');
+      expect(
+        (await source.getRepository(Encounter).findOneByOrFail({ idEncounter: valid.idEncounter }))
+          .summary,
+      ).toBeUndefined();
+    });
+    it.each(['inactive', 'deleted'])(
+      'denies %s records and accounts without falling back to another history',
+      async (state) => {
+        await add();
+        await add(other.idUser);
+        const records = source.getRepository(MedicalRecord);
+        const record = await records.findOneByOrFail({ idPatient: patient.idUser });
+        if (state === 'inactive') await records.update(record.idMedicalRecord, { isActive: false });
+        else await records.softDelete(record.idMedicalRecord);
+        await expect(service.mine(patient.idUser, query)).rejects.toBeInstanceOf(
+          ForbiddenException,
+        );
+        await records.restore(record.idMedicalRecord);
+        await records.update(record.idMedicalRecord, { isActive: true });
+        if (state === 'inactive')
+          await source.getRepository(User).update(patient.idUser, { isActive: false });
+        else await source.getRepository(User).softDelete(patient.idUser);
+        await expect(service.mine(patient.idUser, query)).rejects.toBeInstanceOf(
+          ForbiddenException,
+        );
+        expect((await service.mine(other.idUser, query)).meta.total).toBe(1);
+      },
+    );
+    it('rejects nonexistent session accounts', async () => {
+      await expect(service.mine(999999, query)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
 });
