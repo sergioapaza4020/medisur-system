@@ -7,6 +7,7 @@ import {
 import { DataSource } from 'typeorm';
 import { CreateEncounterDto } from 'src/dtos/encounters/create-encounter.dto';
 import { Encounter } from 'src/entities/encounters/encounter.entity';
+import { MedicalRecord } from 'src/entities/medical-records/medical-record.entity';
 import { Appointment, AppointmentStatus } from 'src/entities/appointments/appointment.entity';
 import { Doctor } from 'src/entities/doctors/doctors.entity';
 import { User } from 'src/entities/users/users.entity';
@@ -78,9 +79,23 @@ export class EncountersService {
       )
         throw new BadRequestException('Especialidad activa no asignada al médico');
       const repository = manager.getRepository(Encounter);
+      const records = manager.getRepository(MedicalRecord);
+      // The unique patient key also serializes first encounters from different doctors.
+      // Do not update existing records or grant access merely because one exists.
+      await records
+        .createQueryBuilder()
+        .insert()
+        .values({ idPatient, createdBy: idUser })
+        .onConflict('("id_patient") DO NOTHING')
+        .execute();
+      const medicalRecord = await records.findOneOrFail({
+        where: { idPatient },
+        withDeleted: true,
+      });
       const encounter = await repository.save(
         repository.create({
           patient,
+          medicalRecord,
           doctor,
           specialty,
           appointment,

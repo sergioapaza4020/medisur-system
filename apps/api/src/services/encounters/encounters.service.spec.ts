@@ -12,6 +12,7 @@ import { User } from 'src/entities/users/users.entity';
 import { Specialty } from 'src/entities/specialties/specialties.entity';
 import { Appointment } from 'src/entities/appointments/appointment.entity';
 import { Encounter } from 'src/entities/encounters/encounter.entity';
+import { MedicalRecord } from 'src/entities/medical-records/medical-record.entity';
 
 describe('Clinical encounter creation', () => {
   const doctor = { idDoctor: 3 };
@@ -30,9 +31,20 @@ describe('Clinical encounter creation', () => {
     { findOne: jest.Mock; existsBy: jest.Mock; create: jest.Mock; save: jest.Mock }
   >();
   const schedules = { ownDoctor: jest.fn() };
+  const medicalRecord = { idMedicalRecord: 13, idPatient: 5 };
+  const recordInsert = {
+    insert: jest.fn().mockReturnThis(),
+    values: jest.fn().mockReturnThis(),
+    onConflict: jest.fn().mockReturnThis(),
+    execute: jest.fn(),
+  };
+  const records = { createQueryBuilder: jest.fn(), findOneOrFail: jest.fn() };
   let service: EncountersService;
   beforeEach(() => {
-    jest.resetAllMocks();
+    jest.clearAllMocks();
+    records.createQueryBuilder.mockReturnValue(recordInsert);
+    records.findOneOrFail.mockResolvedValue(medicalRecord);
+    recordInsert.execute.mockResolvedValue({});
     for (const entity of [Doctor, User, Specialty, Appointment, Encounter]) {
       repositories.set(entity, {
         findOne: jest.fn(),
@@ -49,7 +61,10 @@ describe('Clinical encounter creation', () => {
     repositories.get(Specialty)!.findOne.mockResolvedValue(specialty);
     repositories.get(Appointment)!.findOne.mockResolvedValue(appointment);
     schedules.ownDoctor.mockResolvedValue(doctor);
-    const manager = { getRepository: (entity: unknown) => repositories.get(entity) };
+    const manager = {
+      getRepository: (entity: unknown) =>
+        entity === MedicalRecord ? records : repositories.get(entity),
+    };
     service = new EncountersService(
       {
         transaction: (callback: (value: unknown) => unknown) => callback(manager),
@@ -138,5 +153,26 @@ describe('Clinical encounter creation', () => {
   it('propagates storage failure without returning a successful receipt', async () => {
     repositories.get(Encounter)!.save.mockRejectedValue(new Error('storage failure'));
     await expect(service.create(input, 2)).rejects.toThrow('storage failure');
+  });
+
+  it('creates or reuses the patient record in the encounter transaction without exposing it', async () => {
+    const receipt = await service.create(input, 2);
+    expect(recordInsert.values).toHaveBeenCalledWith({ idPatient: 5, createdBy: 2 });
+    expect(recordInsert.onConflict).toHaveBeenCalledWith('("id_patient") DO NOTHING');
+    expect(records.findOneOrFail).toHaveBeenCalledWith({
+      where: { idPatient: 5 },
+      withDeleted: true,
+    });
+    expect(repositories.get(Encounter)!.create).toHaveBeenCalledWith(
+      expect.objectContaining({ medicalRecord }),
+    );
+    expect(receipt).not.toHaveProperty('medicalRecord');
+    expect(receipt).not.toHaveProperty('idMedicalRecord');
+  });
+
+  it('does not insert an encounter if record creation fails', async () => {
+    recordInsert.execute.mockRejectedValueOnce(new Error('record storage failure'));
+    await expect(service.create(input, 2)).rejects.toThrow('record storage failure');
+    expect(repositories.get(Encounter)!.save).not.toHaveBeenCalled();
   });
 });

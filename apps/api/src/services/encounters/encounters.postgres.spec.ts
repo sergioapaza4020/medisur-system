@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { Encounter } from 'src/entities/encounters/encounter.entity';
+import { MedicalRecord } from 'src/entities/medical-records/medical-record.entity';
 import { Appointment, AppointmentStatus } from 'src/entities/appointments/appointment.entity';
 import { Schedule } from 'src/entities/schedules/schedule.entity';
 import { Doctor } from 'src/entities/doctors/doctors.entity';
@@ -10,6 +11,7 @@ import { Role } from 'src/entities/roles/roles.entity';
 import { Permission } from 'src/entities/permissions/permissions.entity';
 import { UserSession } from 'src/entities/user-sessions/user-sessions.entity';
 import { CreateEncounters1792886400000 } from 'src/database/migrations/1792886400000-CreateEncounters';
+import { CreateMedicalRecords1793232000000 } from 'src/database/migrations/1793232000000-CreateMedicalRecords';
 import { SchedulesService } from '../schedules/schedules.service';
 import { EncountersService } from './encounters.service';
 
@@ -36,6 +38,7 @@ postgres('Encounter migration and persistence in PostgreSQL', () => {
       extra: { options: `-c search_path=${schema},public` },
       entities: [
         Encounter,
+        MedicalRecord,
         Appointment,
         Schedule,
         Doctor,
@@ -48,9 +51,16 @@ postgres('Encounter migration and persistence in PostgreSQL', () => {
       synchronize: true,
     }).initialize();
     await source.query('DROP TABLE encounters');
+    await source.query('DROP TABLE medical_records');
     const runner = source.createQueryRunner();
     try {
+      await runner.startTransaction();
       await new CreateEncounters1792886400000().up(runner);
+      await new CreateMedicalRecords1793232000000().up(runner);
+      await runner.commitTransaction();
+    } catch (error) {
+      await runner.rollbackTransaction();
+      throw error;
     } finally {
       await runner.release();
     }
