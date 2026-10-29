@@ -4,7 +4,8 @@ import type * as ReactModule from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import DoctorMedicalRecord from './DoctorMedicalRecord';
+import DoctorMedicalRecord, { ExtraordinaryMedicalRecord } from './DoctorMedicalRecord';
+import type { ExtraordinaryGrant } from '@/types/medical-records';
 import type ListPagination from '@/components/pagination/ListPagination';
 import type { DoctorAppointment } from '@/types/doctor-agenda';
 
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   allowed: true,
   idUser: 7,
   read: vi.fn(),
+  extraRead: vi.fn(),
   buttons: new Map<string, () => void>(),
   pagination: null as null | ComponentProps<typeof ListPagination>,
 }));
@@ -39,7 +41,7 @@ vi.mock('@/components/auth/AuthGuard', () => ({
   useAuth: () => ({ user: { idUser: mocks.idUser }, hasPermission: () => mocks.allowed }),
 }));
 vi.mock('@/services/medical-records/medicalRecordsService', () => ({
-  medicalRecordsService: { byAppointment: mocks.read },
+  medicalRecordsService: { byAppointment: mocks.read, byExtraordinaryGrant: mocks.extraRead },
 }));
 vi.mock('@/components/pagination/ListPagination', () => ({
   default: (props: ComponentProps<typeof ListPagination>) => {
@@ -118,6 +120,7 @@ beforeEach(() => {
   mocks.idUser = 7;
   mocks.pagination = null;
   mocks.read.mockResolvedValue(page);
+  mocks.extraRead.mockResolvedValue(page);
 });
 
 describe('Doctor clinical history dialog', () => {
@@ -234,5 +237,63 @@ describe('Doctor clinical history dialog', () => {
     effect();
     await flush();
     expect(mocks.states[1]).toEqual({ page: 1, limit: 10 });
+  });
+});
+
+describe('Extraordinary clinical dialog', () => {
+  const grant: ExtraordinaryGrant = {
+    idGrant: 9,
+    patient: { idUser: 2, name: 'Luis', lastname: 'Patient', ci: '123' },
+    beneficiary: { idUser: 7, name: 'Ana', lastname: 'Doctor' },
+    type: 'EMERGENCY',
+    reason: 'Situación de emergencia',
+    createdAt: '2026-10-29T12:00:00Z',
+    expiresAt: '2026-10-29T13:00:00Z',
+    revokedAt: null,
+    revocationReason: null,
+    state: 'ACTIVE',
+  };
+  function renderGrant(value = grant) {
+    mocks.index = 0;
+    mocks.effects = [];
+    mocks.buttons.clear();
+    return renderToStaticMarkup(<ExtraordinaryMedicalRecord grant={value} />);
+  }
+  it('does not render for managers without read permission or for other beneficiaries', () => {
+    mocks.allowed = false;
+    expect(renderGrant()).toBe('');
+    mocks.allowed = true;
+    mocks.idUser = 8;
+    expect(renderGrant()).toBe('');
+    expect(mocks.extraRead).not.toHaveBeenCalled();
+  });
+  it.each(['REVOKED', 'EXPIRED'])('does not render clinical access for a %s grant', (state) => {
+    expect(renderGrant({ ...grant, state: state as 'ACTIVE' })).toBe('');
+  });
+  it('uses only the grant route and removes clinical content at the expiry boundary', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-29T12:59:59Z'));
+    const cleanups: (() => void)[] = [];
+    try {
+      renderGrant();
+      mocks.buttons.get('Consultar historial')!();
+      renderGrant();
+      for (const callback of mocks.effects) {
+        const cleanup = callback();
+        if (cleanup) cleanups.push(cleanup);
+      }
+      await flush();
+      expect(renderGrant()).toContain('PRIVATE-CLINICAL');
+      expect(mocks.extraRead).toHaveBeenCalledExactlyOnceWith(9, { page: 1, limit: 10 });
+      expect(mocks.read).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1001);
+      const html = renderGrant();
+      expect(html).toContain('autorización extraordinaria venció');
+      expect(html).not.toContain('PRIVATE-CLINICAL');
+      expect(mocks.states[3]).toBeNull();
+    } finally {
+      for (const cleanup of cleanups) cleanup();
+      vi.useRealTimers();
+    }
   });
 });

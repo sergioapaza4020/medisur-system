@@ -9,6 +9,7 @@ import { SchedulesModule } from '../schedules/schedules.module';
 @Module({
   imports: [TypeOrmModule.forFeature([Appointment, ReschedulingProposal]), SchedulesModule],
   providers: [AppointmentsService],
+  exports: [AppointmentsService],
   controllers: [AppointmentsController],
 })
 export class AppointmentsModule {}

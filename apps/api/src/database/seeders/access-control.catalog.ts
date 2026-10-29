@@ -1,7 +1,7 @@
 // Keep the resource.action convention used by the existing controllers.
 export const MEDISUR_PERMISSIONS = {
   encounter: ['create'],
-  'medical-record': ['get-by-appointment', 'get-mine'],
+  'medical-record': ['get-by-appointment', 'get-mine', 'manage-extraordinary', 'get-extraordinary'],
   user: [
     'get-all',
     'get-one-by-email',
@@ -63,6 +63,8 @@ export const MEDISUR_CLINICAL_PERMISSION_NAMES = [
   'encounter.create',
   'medical-record.get-by-appointment',
   'medical-record.get-mine',
+  'medical-record.manage-extraordinary',
+  'medical-record.get-extraordinary',
 ];
 
 export const MEDISUR_STAFF_PERMISSION_NAMES = [

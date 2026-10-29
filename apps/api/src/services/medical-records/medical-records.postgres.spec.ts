@@ -5,6 +5,12 @@ import { MedicalRecordsService } from './medical-records.service';
 import { EncountersService } from '../encounters/encounters.service';
 import { SchedulesService } from '../schedules/schedules.service';
 import { MedicalRecordAccess } from 'src/entities/medical-records/medical-record-access.entity';
+import {
+  ExtraordinaryGrant,
+  ExtraordinaryGrantType,
+} from 'src/entities/medical-records/extraordinary-grant.entity';
+import { ExtraordinaryGrantsService } from './extraordinary-grants.service';
+import { ExtraordinaryClinicalGrants1793404800000 } from 'src/database/migrations/1793404800000-ExtraordinaryClinicalGrants';
 import { MedicalRecord } from 'src/entities/medical-records/medical-record.entity';
 import { MedicalRecordAccesses1793318400000 } from 'src/database/migrations/1793318400000-MedicalRecordAccesses';
 import { Encounter } from 'src/entities/encounters/encounter.entity';
@@ -49,6 +55,7 @@ postgres('Clinical read isolation and access context in PostgreSQL', () => {
       extra: { options: `-c search_path=${schema},public` },
       entities: [
         MedicalRecordAccess,
+        ExtraordinaryGrant,
         MedicalRecord,
         Encounter,
         Appointment,
@@ -63,9 +70,11 @@ postgres('Clinical read isolation and access context in PostgreSQL', () => {
       synchronize: true,
     }).initialize();
     await source.query('DROP TABLE medical_record_accesses');
+    await source.query('DROP TABLE extraordinary_grants');
     const runner = source.createQueryRunner();
     try {
       await new MedicalRecordAccesses1793318400000().up(runner);
+      await new ExtraordinaryClinicalGrants1793404800000().up(runner);
     } finally {
       await runner.release();
     }
@@ -75,7 +84,7 @@ postgres('Clinical read isolation and access context in PostgreSQL', () => {
   }, 30000);
   beforeEach(async () => {
     await source.query(
-      'TRUNCATE medical_record_accesses, encounters, medical_records, appointments, schedules, doctor_specialty, doctors, user_role, users, role_permission, roles, specialties RESTART IDENTITY CASCADE',
+      'TRUNCATE medical_record_accesses, encounters, medical_records, appointments, schedules, doctor_specialty, doctors, user_role, users, role_permission, roles, permissions, specialties RESTART IDENTITY CASCADE',
     );
     const role = await source.getRepository(Role).save({ name: 'DOCTOR' });
     const patientRole = await source.getRepository(Role).save({ name: 'PATIENT' });
@@ -199,7 +208,7 @@ postgres('Clinical read isolation and access context in PostgreSQL', () => {
     expect(accesses[0].actor.idUser).toBe(physicians[0].idUser);
     expect(accesses[0].patient.idUser).toBe(patient.idUser);
     expect(accesses[0].doctor.idDoctor).toBe(doctors[0].idDoctor);
-    expect(accesses[0].appointment.idAppointment).toBe(appointment.idAppointment);
+    expect(accesses[0].appointment?.idAppointment).toBe(appointment.idAppointment);
     expect(accesses[0].medicalRecord?.idPatient).toBe(patient.idUser);
     expect(accesses[0].accessedAt).toBeInstanceOf(Date);
     const raw: Record<string, unknown>[] = await source.query(
@@ -410,6 +419,241 @@ postgres('Clinical read isolation and access context in PostgreSQL', () => {
     );
     it('rejects nonexistent session accounts', async () => {
       await expect(service.mine(999999, query)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('Extraordinary scoped clinical grants', () => {
+    let manager: User;
+    let grants: ExtraordinaryGrantsService;
+    let permission: Permission;
+    beforeEach(async () => {
+      manager = await source.getRepository(User).save({
+        name: 'Manager',
+        lastname: 'Staff',
+        email: 'manager@example.test',
+        ci: 'staff',
+        password: 'unused',
+      });
+      permission = await source
+        .getRepository(Permission)
+        .save({ name: 'medical-record.get-extraordinary' });
+      const role = await source.getRepository(Role).findOneByOrFail({ name: 'DOCTOR' });
+      await source.getRepository(Role).save({ ...role, permissions: [permission] });
+      grants = new ExtraordinaryGrantsService(source, schedules);
+    });
+    function input() {
+      return {
+        idPatient: patient.idUser,
+        idBeneficiary: physicians[0].idUser,
+        type: ExtraordinaryGrantType.AUTHORIZATION,
+        reason: 'Autorización documentada del paciente',
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+      };
+    }
+    async function grant() {
+      return grants.create(input(), manager.idUser);
+    }
+    it.each([ExtraordinaryGrantType.AUTHORIZATION, ExtraordinaryGrantType.EMERGENCY])(
+      'records %s cause and author, and permits only the named physician to read the named patient',
+      async (type) => {
+        await add(patient.idUser, 1, 'AUTHORIZED-CONTENT');
+        await add(other.idUser, 1, 'PRIVATE-OTHER');
+        const created = await grants.create({ ...input(), type }, manager.idUser);
+        const result = await service.byExtraordinaryGrant(
+          created.idGrant,
+          physicians[0].idUser,
+          query,
+        );
+        expect(result.data[0].summary).toBe('AUTHORIZED-CONTENT');
+        expect(result.meta.total).toBe(1);
+        expect(JSON.stringify(result)).not.toContain('PRIVATE-OTHER');
+        const stored = await source.getRepository(ExtraordinaryGrant).findOneOrFail({
+          where: { idGrant: created.idGrant },
+          relations: { createdBy: true, patient: true, beneficiary: true },
+        });
+        expect(stored.createdBy.idUser).toBe(manager.idUser);
+        expect(stored.patient.idUser).toBe(patient.idUser);
+        expect(stored.beneficiary.idUser).toBe(physicians[0].idUser);
+        expect(stored.type).toBe(type);
+        const access = await source
+          .getRepository(MedicalRecordAccess)
+          .findOneOrFail({ where: {}, relations: { extraordinaryGrant: true, actor: true } });
+        expect(access.extraordinaryGrant?.idGrant).toBe(created.idGrant);
+        expect(access.actor.idUser).toBe(physicians[0].idUser);
+        const metadata = await grants.list(new PaginationQueryDto());
+        expect(JSON.stringify(metadata)).not.toContain('AUTHORIZED-CONTENT');
+        await expect(
+          service.byExtraordinaryGrant(created.idGrant, physicians[1].idUser, query),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        await expect(
+          service.byExtraordinaryGrant(created.idGrant, manager.idUser, query),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        expect(await source.getRepository(MedicalRecordAccess).count()).toBe(1);
+      },
+    );
+    it('lists only the beneficiary own active grants and creates no global role permissions', async () => {
+      const before: unknown = await source.query('SELECT * FROM role_permission');
+      const first = await grant();
+      await grants.create(
+        { ...input(), idPatient: other.idUser, idBeneficiary: physicians[1].idUser },
+        manager.idUser,
+      );
+      const mine = await grants.list(new PaginationQueryDto(), physicians[0].idUser);
+      expect(mine.data.map((row) => row.idGrant)).toEqual([first.idGrant]);
+      expect(mine.meta.total).toBe(1);
+      expect(await source.query('SELECT * FROM role_permission')).toEqual(before);
+    });
+    it('prevents self grants, invalid patients and unavailable beneficiaries', async () => {
+      await expect(
+        grants.create({ ...input(), idBeneficiary: manager.idUser }, manager.idUser),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        grants.create({ ...input(), idPatient: 999999 }, manager.idUser),
+      ).rejects.toThrow('Paciente activo no encontrado');
+      await expect(
+        grants.create({ ...input(), idBeneficiary: 999999 }, manager.idUser),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await source.getRepository(User).update(patient.idUser, { isActive: false });
+      await expect(grant()).rejects.toThrow('Paciente activo no encontrado');
+      expect(await source.getRepository(ExtraordinaryGrant).count()).toBe(0);
+    });
+    it('requires an active clinical permission for the beneficiary without granting it', async () => {
+      await source.getRepository(Permission).update(permission.idPermission, { isActive: false });
+      await expect(grant()).rejects.toThrow(
+        'El beneficiario requiere permiso de lectura extraordinaria',
+      );
+      expect(await source.getRepository(ExtraordinaryGrant).count()).toBe(0);
+    });
+    it('serializes duplicate concurrent concessions and preserves one active grant', async () => {
+      const results = await Promise.allSettled([grant(), grant()]);
+      expect(results.filter((row) => row.status === 'fulfilled')).toHaveLength(1);
+      expect(await source.getRepository(ExtraordinaryGrant).count()).toBe(1);
+    });
+    it.each([-1, 25])('rejects an expiry %s hours from now', async (hours) => {
+      await expect(
+        grants.create(
+          { ...input(), expiresAt: new Date(Date.now() + hours * 3600000).toISOString() },
+          manager.idUser,
+        ),
+      ).rejects.toThrow('La vigencia debe ser futura y de hasta 24 horas');
+      expect(await source.getRepository(ExtraordinaryGrant).count()).toBe(0);
+    });
+    it('retains original authorization and read traces after revocation and prevents repeated revocation', async () => {
+      const created = await grant();
+      await service.byExtraordinaryGrant(created.idGrant, physicians[0].idUser, query);
+      const first = await source
+        .getRepository(ExtraordinaryGrant)
+        .findOneByOrFail({ idGrant: created.idGrant });
+      await grants.revoke(created.idGrant, manager.idUser, 'Autorización retirada por el paciente');
+      const revoked = await source
+        .getRepository(ExtraordinaryGrant)
+        .findOneOrFail({ where: { idGrant: created.idGrant }, relations: { revokedBy: true } });
+      expect(revoked.createdAt).toEqual(first.createdAt);
+      expect(revoked.reason).toBe(first.reason);
+      expect(revoked.revokedBy?.idUser).toBe(manager.idUser);
+      expect(revoked.revokedAt).toBeInstanceOf(Date);
+      await expect(
+        service.byExtraordinaryGrant(created.idGrant, physicians[0].idUser, query),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        grants.revoke(created.idGrant, manager.idUser, 'Otra causa de revocación'),
+      ).rejects.toThrow('La autorización ya fue revocada');
+      expect((await grants.list(new PaginationQueryDto())).data[0].state).toBe('REVOKED');
+      expect((await grants.list(new PaginationQueryDto(), physicians[0].idUser)).meta.total).toBe(
+        0,
+      );
+      expect(await source.getRepository(MedicalRecordAccess).count()).toBe(1);
+      const next = await grant();
+      expect(next.idGrant).not.toBe(created.idGrant);
+    });
+    it('enforces expiration without deleting the historical grant', async () => {
+      const created = await grant();
+      await source.getRepository(ExtraordinaryGrant).update(created.idGrant, {
+        createdAt: new Date(Date.now() - 7200000),
+        expiresAt: new Date(Date.now() - 3600000),
+      });
+      await expect(
+        service.byExtraordinaryGrant(created.idGrant, physicians[0].idUser, query),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect((await grants.list(new PaginationQueryDto())).data[0].state).toBe('EXPIRED');
+      expect((await grants.list(new PaginationQueryDto(), physicians[0].idUser)).meta.total).toBe(
+        0,
+      );
+      expect(await source.getRepository(ExtraordinaryGrant).count()).toBe(1);
+    });
+    it('revalidates active medical profile and patient at every read', async () => {
+      const created = await grant();
+      await source.getRepository(Doctor).update(doctors[0].idDoctor, { isActive: false });
+      await expect(
+        service.byExtraordinaryGrant(created.idGrant, physicians[0].idUser, query),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await source.getRepository(Doctor).update(doctors[0].idDoctor, { isActive: true });
+      await source.getRepository(User).update(patient.idUser, { isActive: false });
+      await expect(
+        service.byExtraordinaryGrant(created.idGrant, physicians[0].idUser, query),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect((await grants.list(new PaginationQueryDto(), physicians[0].idUser)).meta.total).toBe(
+        0,
+      );
+    });
+    it('does not disclose data if extraordinary access logging fails', async () => {
+      const created = await grant();
+      await add();
+      await source.query(
+        'ALTER TABLE medical_record_accesses ADD CONSTRAINT test_access_failure CHECK (id_actor < 0)',
+      );
+      try {
+        await expect(
+          service.byExtraordinaryGrant(created.idGrant, physicians[0].idUser, query),
+        ).rejects.toMatchObject({ driverError: { code: '23514' } });
+      } finally {
+        await source.query(
+          'ALTER TABLE medical_record_accesses DROP CONSTRAINT test_access_failure',
+        );
+      }
+      expect(await source.getRepository(MedicalRecordAccess).count()).toBe(0);
+    });
+    it('serializes revocation against a concurrent read and denies all following requests', async () => {
+      const created = await grant();
+      await Promise.allSettled([
+        service.byExtraordinaryGrant(created.idGrant, physicians[0].idUser, query),
+        grants.revoke(created.idGrant, manager.idUser, 'Revocación de autorización solicitada'),
+      ]);
+      await expect(
+        service.byExtraordinaryGrant(created.idGrant, physicians[0].idUser, query),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(await source.getRepository(ExtraordinaryGrant).count()).toBe(1);
+    });
+    it('protects cause, expiry and access basis constraints and refuses destructive migration reversal', async () => {
+      const created = await grant();
+      await service.byExtraordinaryGrant(created.idGrant, physicians[0].idUser, query);
+      await expect(
+        source.query('UPDATE medical_record_accesses SET id_extraordinary_grant = NULL'),
+      ).rejects.toMatchObject({ driverError: { code: '23514' } });
+      await expect(
+        source.getRepository(ExtraordinaryGrant).delete(created.idGrant),
+      ).rejects.toMatchObject({ driverError: { code: '23503' } });
+      await expect(
+        source.query('UPDATE extraordinary_grants SET reason = $1 WHERE id_grant = $2', [
+          ' ',
+          created.idGrant,
+        ]),
+      ).rejects.toMatchObject({ driverError: { code: '23514' } });
+      await expect(
+        source.query(
+          "UPDATE extraordinary_grants SET expires_at = created_at + interval '25 hours' WHERE id_grant = $1",
+          [created.idGrant],
+        ),
+      ).rejects.toMatchObject({ driverError: { code: '23514' } });
+      const runner = source.createQueryRunner();
+      try {
+        await expect(new ExtraordinaryClinicalGrants1793404800000().down(runner)).rejects.toThrow(
+          'Cannot revert',
+        );
+      } finally {
+        await runner.release();
+      }
+      expect(await source.getRepository(ExtraordinaryGrant).count()).toBe(1);
     });
   });
 });

@@ -20,7 +20,7 @@ import { useAuth } from '@/components/auth/AuthGuard';
 import ListPagination from '@/components/pagination/ListPagination';
 import type { DoctorAppointment } from '@/types/doctor-agenda';
 import type { PaginationQuery } from '@/types/pagination';
-import type { DoctorMedicalRecordPage } from '@/types/medical-records';
+import type { DoctorMedicalRecordPage, ExtraordinaryGrant } from '@/types/medical-records';
 import { medicalRecordsService } from '@/services/medical-records/medicalRecordsService';
 import { getApiErrorMessage } from '@/utils/http/getApiErrorMessage';
 
@@ -42,7 +42,27 @@ export default function DoctorMedicalRecord({ appointment }: { appointment: Doct
   );
 }
 
-function MedicalRecordDialog({ appointment, idUser }: { appointment: DoctorAppointment; idUser: number }) {
+export function ExtraordinaryMedicalRecord({ grant }: { grant: ExtraordinaryGrant }) {
+  const { user, hasPermission } = useAuth();
+  if (
+    !user ||
+    !hasPermission('medical-record.get-extraordinary') ||
+    grant.state !== 'ACTIVE' ||
+    grant.beneficiary.idUser !== user.idUser
+  )
+    return null;
+  return <MedicalRecordDialog key={`${user.idUser}/grant/${grant.idGrant}`} grant={grant} idUser={user.idUser} />;
+}
+
+function MedicalRecordDialog({
+  appointment,
+  grant,
+  idUser,
+}: {
+  appointment?: DoctorAppointment;
+  grant?: ExtraordinaryGrant;
+  idUser: number;
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState<PaginationQuery>({ page: 1, limit: 10 });
   const [refresh, setRefresh] = useState(0);
@@ -52,13 +72,42 @@ function MedicalRecordDialog({ appointment, idUser }: { appointment: DoctorAppoi
     error?: string;
     denied?: boolean;
   } | null>(null);
-  const key = `${idUser}/${appointment.idAppointment}/${query.page}/${query.limit}/${refresh}`;
-  const current = response?.key === key ? response : null;
+  const [now, setNow] = useState(() => Date.now());
+  const expired = Boolean(grant && Date.parse(grant.expiresAt) <= now);
+  const key = `${idUser}/${grant ? 'grant/' + grant.idGrant : appointment?.idAppointment}/${query.page}/${query.limit}/${refresh}`;
+  const current = !expired && response?.key === key ? response : null;
+  const patient = grant?.patient ?? appointment?.patient;
+  const idAppointment = appointment?.idAppointment;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !grant) return;
+    const timer = setTimeout(
+      () => {
+        setNow(Date.now());
+        setResponse(null);
+      },
+      Math.max(0, Date.parse(grant.expiresAt) - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [open, grant]);
+
+  useEffect(() => {
+    if (!open || !grant || typeof window === 'undefined') return;
+    const revalidate = () => {
+      setNow(Date.now());
+      setRefresh((value) => value + 1);
+    };
+    window.addEventListener('focus', revalidate);
+    return () => window.removeEventListener('focus', revalidate);
+  }, [open, grant]);
+
+  useEffect(() => {
+    if (!open || expired) return;
     let active = true;
-    medicalRecordsService.byAppointment(appointment.idAppointment, query).then(
+    const request = grant
+      ? medicalRecordsService.byExtraordinaryGrant(grant.idGrant, query)
+      : medicalRecordsService.byAppointment(idAppointment!, query);
+    request.then(
       (page) => {
         if (active) {
           if (!page.data.length && page.meta.total > 0 && query.page > page.meta.totalPages) {
@@ -78,7 +127,7 @@ function MedicalRecordDialog({ appointment, idUser }: { appointment: DoctorAppoi
     return () => {
       active = false;
     };
-  }, [open, appointment.idAppointment, query, key]);
+  }, [open, idAppointment, grant, expired, query, key]);
 
   function close() {
     setOpen(false);
@@ -88,7 +137,9 @@ function MedicalRecordDialog({ appointment, idUser }: { appointment: DoctorAppoi
   return (
     <>
       <Button
+        disabled={expired}
         onClick={() => {
+          setNow(Date.now());
           setQuery({ page: 1, limit: 10 });
           setRefresh((value) => value + 1);
           setOpen(true);
@@ -98,12 +149,24 @@ function MedicalRecordDialog({ appointment, idUser }: { appointment: DoctorAppoi
       </Button>
       <Dialog open={open} onClose={close} fullWidth maxWidth='md' aria-labelledby='doctor-medical-record-title'>
         <DialogTitle id='doctor-medical-record-title'>
-          Historial clínico de {appointment.patient.name} {appointment.patient.lastname}
+          Historial clínico de {patient?.name} {patient?.lastname}
         </DialogTitle>
         <DialogContent>
           {open && (
             <Stack spacing={3}>
-              {!current ? (
+              {grant && !expired && (
+                <Button
+                  onClick={() => {
+                    setNow(Date.now());
+                    setRefresh((value) => value + 1);
+                  }}
+                >
+                  Actualizar consulta
+                </Button>
+              )}
+              {expired ? (
+                <Alert severity='error'>La autorización extraordinaria venció. Solicita una nueva autorización.</Alert>
+              ) : !current ? (
                 <CircularProgress aria-label='Cargando historial clínico' />
               ) : current.error ? (
                 <Alert
