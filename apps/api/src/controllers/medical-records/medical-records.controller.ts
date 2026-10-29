@@ -13,6 +13,13 @@ import { MedicalRecordsService } from 'src/services/medical-records/medical-reco
 export class MedicalRecordsController {
   constructor(private readonly service: MedicalRecordsService) {}
 
+  @Get('mine')
+  @Permissions('medical-record.get-mine')
+  @Header('Cache-Control', 'no-store')
+  mine(@CurrentUser() user: JwtPayload, @Query() query: PaginationQueryDto) {
+    return this.service.mine(user.idUser, query);
+  }
+
   @Get('by-appointment/:idAppointment')
   @Header('Cache-Control', 'no-store')
   byAppointment(
